@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -12,6 +13,16 @@ class Settings(BaseSettings):
 
     # База даних
     DATABASE_URL: str = "sqlite+aiosqlite:///./finance.db"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def fix_async_driver(cls, v: str) -> str:
+        # Railway передає postgres:// або postgresql:// — замінюємо на asyncpg-драйвер
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     # Обмінні курси
     NBU_API_URL: str = "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange"
