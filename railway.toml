@@ -1,0 +1,27 @@
+# FinanceAI Bot — Railway конфігурація
+#
+# Створіть два сервіси в Railway dashboard з одного репозиторію:
+#
+#   Сервіс 1 «api»:
+#     Start Command: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+#     Health Check:  /health
+#     Env vars:      TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, DATABASE_URL,
+#                    WEBHOOK_URL, CORS_ORIGINS
+#
+#   Сервіс 2 «bot»:
+#     Start Command: python bot/main.py
+#     Health Check:  (вимкнути — worker-процес без HTTP)
+#     Env vars:      TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, DATABASE_URL,
+#                    WEBHOOK_URL  (якщо потрібен webhook-режим + PORT)
+#
+# Або один сервіс із start.sh (see below) і змінною SERVICE_TYPE=api|bot.
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
