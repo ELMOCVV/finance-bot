@@ -20,7 +20,8 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "cd /app && uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+# PYTHONPATH=/app/backend — щоб `from app.config import ...` всередині backend/ працювало
+startCommand = "PYTHONPATH=/app/backend uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

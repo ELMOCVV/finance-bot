@@ -1,8 +1,18 @@
-from datetime import datetime, date
-from typing import Optional
+from datetime import datetime
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Transaction, Account, Category, Budget, Goal, Debt
+from app.models import Transaction, Account, Category, Budget
+from app.config import settings
+
+
+def _month_expr(date_col):
+    """
+    Повертає SQL-вираз для групування дати за місяцем (YYYY-MM).
+    func.strftime — SQLite, func.to_char — PostgreSQL.
+    """
+    if "postgresql" in settings.DATABASE_URL or "postgres" in settings.DATABASE_URL:
+        return func.to_char(date_col, "YYYY-MM")
+    return func.strftime("%Y-%m", date_col)
 
 
 class AnalyticsService:
@@ -13,7 +23,6 @@ class AnalyticsService:
         start = datetime(year, mon, 1)
         end = datetime(year, mon + 1, 1) if mon < 12 else datetime(year + 1, 1, 1)
 
-        # Загальні доходи за місяць (в UAH)
         income_q = await db.execute(
             select(func.sum(Transaction.amount_uah)).where(
                 and_(
@@ -26,7 +35,6 @@ class AnalyticsService:
         )
         total_income = income_q.scalar() or 0.0
 
-        # Загальні витрати за місяць
         expense_q = await db.execute(
             select(func.sum(Transaction.amount_uah)).where(
                 and_(
@@ -39,7 +47,6 @@ class AnalyticsService:
         )
         total_expense = expense_q.scalar() or 0.0
 
-        # Баланс по рахунках
         accounts_q = await db.execute(
             select(Account).where(Account.user_id == user_id)
         )
@@ -100,19 +107,19 @@ class AnalyticsService:
         self, db: AsyncSession, user_id: int, months: int = 6
     ) -> list[dict]:
         """Тренд доходів/витрат за останні N місяців."""
+        month_col = _month_expr(Transaction.date)
         result = await db.execute(
             select(
-                func.strftime("%Y-%m", Transaction.date).label("month"),
+                month_col.label("month"),
                 Transaction.type,
                 func.sum(Transaction.amount_uah).label("total"),
             )
             .where(Transaction.user_id == user_id)
-            .group_by(func.strftime("%Y-%m", Transaction.date), Transaction.type)
-            .order_by(func.strftime("%Y-%m", Transaction.date).desc())
+            .group_by(month_col, Transaction.type)
+            .order_by(month_col.desc())
         )
         rows = result.all()
 
-        # Агрегуємо по місяцях
         trend: dict[str, dict] = {}
         for row in rows:
             m = row.month

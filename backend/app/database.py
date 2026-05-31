@@ -7,14 +7,19 @@ class Base(DeclarativeBase):
     pass
 
 
-# Async engine для SQLite
+# connect_args потрібен тільки для SQLite (check_same_thread)
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+_connect_args = {"check_same_thread": False} if _is_sqlite else {}
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False},
+    connect_args=_connect_args,
+    # PostgreSQL: pool налаштування для Railway
+    pool_pre_ping=True,                          # перевіряє з'єднання перед використанням
+    **({} if _is_sqlite else {"pool_size": 5, "max_overflow": 10}),
 )
 
-# Фабрика async-сесій
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
