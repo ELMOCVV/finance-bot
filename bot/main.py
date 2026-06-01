@@ -49,8 +49,15 @@ def setup_webhook_routes(app: FastAPI) -> None:
     @app.post(WEBHOOK_PATH)
     async def telegram_webhook(request: Request) -> JSONResponse:
         from aiogram.types import Update
-        update = Update(**(await request.json()))
-        await dp.feed_update(bot, update)
+        try:
+            # model_validate_json коректно резолвить аліаси ("from" → from_user)
+            # і не потребує подвійного JSON-парсингу
+            body = await request.body()
+            update = Update.model_validate_json(body)
+            await dp.feed_update(bot, update)
+        except Exception as exc:
+            logger.error("Webhook processing error: %s", exc, exc_info=True)
+        # Завжди повертаємо 200 — інакше Telegram перестає надсилати апдейти
         return JSONResponse({"ok": True})
 
 
@@ -60,8 +67,9 @@ async def bot_startup() -> None:
     setup_scheduler(bot).start()
     if settings.WEBHOOK_URL:
         url = f"{settings.WEBHOOK_URL.rstrip('/')}{WEBHOOK_PATH}"
-        await bot.set_webhook(url)
-        logger.info("Webhook встановлено: %s", url)
+        await bot.set_webhook(url, drop_pending_updates=True, allowed_updates=dp.resolve_used_update_types())
+        info = await bot.get_webhook_info()
+        logger.info("Webhook встановлено: %s (pending=%s)", info.url, info.pending_update_count)
     else:
         logger.warning("WEBHOOK_URL не вказано — webhook не встановлено.")
 
