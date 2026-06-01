@@ -7,6 +7,27 @@ from app.services.exchange_rate_service import exchange_rate_service
 
 
 TYPE_EMOJI = {"expense": "➖", "income": "➕", "transfer": "🔄", "debt_payment": "💳"}
+_NUM_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+
+def build_multi_confirmation_text(multi_txs: list) -> str:
+    lines = ["📋 <b>Підтвердіть транзакції:</b>"]
+    for i, d in enumerate(multi_txs):
+        num = _NUM_EMOJI[i] if i < len(_NUM_EMOJI) else f"{i + 1}."
+        tx_type = d.get("tx_type", "expense")
+        amount = d.get("amount", 0)
+        currency = d.get("currency", "UAH")
+        description = d.get("description") or "—"
+        account_name = d.get("account_name", "—")
+        cat_name = d.get("category_name") or "Інше"
+        emoji = TYPE_EMOJI.get(tx_type, "💸")
+        lines.append(f"\n{num}")
+        lines.append(f"— Тип: {emoji} <b>{tx_type}</b>")
+        lines.append(f"💰 Сума: <b>{amount} {currency}</b>")
+        lines.append(f"📝 Опис: {description}")
+        lines.append(f"🏦 Рахунок: {account_name}")
+        lines.append(f"🏷 Категорія: {cat_name}")
+    return "\n".join(lines)
 
 
 def build_confirmation_text(d: dict) -> str:

@@ -7,18 +7,26 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # Системний промпт для парсингу транзакцій
-PARSE_TRANSACTION_PROMPT = """Ти — фінансовий асистент. Парсуй повідомлення користувача та витягуй фінансові транзакції.
+PARSE_TRANSACTION_PROMPT = """Ти — фінансовий асистент. Парсуй повідомлення та витягуй фінансові транзакції.
 
-Відповідай ВИКЛЮЧНО валідним JSON без жодного тексту навколо. Структура:
+Відповідай ВИКЛЮЧНО валідним JSON без жодного тексту навколо.
+
+Структура транзакції:
 {
   "type": "expense" | "income" | "transfer",
   "amount": число,
-  "currency": "UAH" | "USD" | "USDT" | ...,
+  "currency": "UAH" | "USD" | "USDT" | "EUR" | ...,
   "description": "опис",
-  "category_hint": "підказка категорії (їжа, транспорт, ...)",
-  "account_hint": "підказка рахунку (картка, готівка, ...)",
+  "category_hint": "категорія (їжа, транспорт, розваги, ...)",
+  "account_hint": "рахунок (картка, готівка, ...) або null",
   "date_hint": null або "сьогодні" | "вчора" | ISO-дата
 }
+
+Якщо в повідомленні ОДНА транзакція — поверни JSON-об'єкт:
+{"type": "expense", "amount": 50, "currency": "UAH", "description": "кофе", ...}
+
+Якщо в повідомленні КІЛЬКА транзакцій (кілька рядків, кожен з сумою) — поверни JSON-масив:
+[{"type": "expense", "amount": 50, ...}, {"type": "expense", "amount": 145, ...}]
 
 Якщо не вдалось розпарсити — поверни {"error": "причина"}.
 """
@@ -34,17 +42,16 @@ class ClaudeService:
         self.client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = "claude-sonnet-4-6"
 
-    async def parse_transaction(self, text: str) -> dict:
-        """Парсить текст повідомлення у структуровану транзакцію."""
+    async def parse_transaction(self, text: str) -> "dict | list":
+        """Парсить текст повідомлення. Повертає dict (одна транзакція або error) або list (кілька)."""
         try:
             message = await self.client.messages.create(
                 model=self.model,
-                max_tokens=512,
+                max_tokens=1024,
                 system=PARSE_TRANSACTION_PROMPT,
                 messages=[{"role": "user", "content": text}],
             )
             raw = message.content[0].text.strip()
-            # Видаляємо можливі markdown-огортки ```json ... ```
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):

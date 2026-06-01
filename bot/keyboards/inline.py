@@ -95,6 +95,30 @@ def confirm_edit_keyboard(confirm_cb: str, cancel_cb: str) -> InlineKeyboardMark
 
 # ── Транзакції ────────────────────────────────────────────────────────────────
 
+def confirm_multi_transaction_keyboard() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text="✅ Підтвердити всі", callback_data="multi:confirm"))
+    b.row(
+        InlineKeyboardButton(text="✏️ Редагувати", callback_data="multi:edit"),
+        InlineKeyboardButton(text="❌ Скасувати",   callback_data="multi:cancel"),
+    )
+    return b.as_markup()
+
+
+_NUM_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+
+def multi_tx_select_keyboard(multi_txs: list) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for i, tx in enumerate(multi_txs):
+        num = _NUM_EMOJI[i] if i < len(_NUM_EMOJI) else f"{i + 1}."
+        desc = (tx.get("description") or "?")[:18]
+        label = f"{num} {tx.get('amount', 0)} {tx.get('currency', 'UAH')} — {desc}"
+        b.row(InlineKeyboardButton(text=label[:60], callback_data=f"multi:edit:{i}"))
+    b.row(InlineKeyboardButton(text="⬅️ До підтвердження", callback_data="multi:back"))
+    return b.as_markup()
+
+
 def confirm_transaction_keyboard() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(
@@ -117,7 +141,7 @@ def new_category_keyboard(cat_name: str) -> InlineKeyboardMarkup:
     return b.as_markup()
 
 
-def edit_transaction_keyboard() -> InlineKeyboardMarkup:
+def edit_transaction_keyboard(show_new_cat: bool = False) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(
         InlineKeyboardButton(text="💵 Змінити суму",  callback_data="txedit:amount"),
@@ -127,6 +151,8 @@ def edit_transaction_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏷 Змінити категорію", callback_data="txedit:category"),
         InlineKeyboardButton(text="🏦 Змінити рахунок",   callback_data="txedit:account"),
     )
+    if show_new_cat:
+        b.row(InlineKeyboardButton(text="➕ Нова категорія", callback_data="txedit:new_cat"))
     b.row(InlineKeyboardButton(text="⬅️ До підтвердження", callback_data="txedit:back"))
     return b.as_markup()
 

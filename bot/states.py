@@ -24,6 +24,7 @@ class EditTransaction(StatesGroup):
     editing_amount = State()
     editing_description = State()
     selecting_category = State()
+    creating_category_name = State()
 
 
 class AddGoal(StatesGroup):
