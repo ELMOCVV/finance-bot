@@ -65,18 +65,37 @@ async def bot_startup() -> None:
     """Викликається з lifespan FastAPI при старті."""
     from bot.scheduler import setup_scheduler
     setup_scheduler(bot).start()
-    if settings.WEBHOOK_URL:
-        url = f"{settings.WEBHOOK_URL.rstrip('/')}{WEBHOOK_PATH}"
-        await bot.set_webhook(url, drop_pending_updates=True, allowed_updates=dp.resolve_used_update_types())
-        info = await bot.get_webhook_info()
-        logger.info("Webhook встановлено: %s (pending=%s)", info.url, info.pending_update_count)
-    else:
+    if not settings.WEBHOOK_URL:
         logger.warning("WEBHOOK_URL не вказано — webhook не встановлено.")
+        return
+
+    url = f"{settings.WEBHOOK_URL.rstrip('/')}{WEBHOOK_PATH}"
+    try:
+        allowed = dp.resolve_used_update_types()
+        result = await bot.set_webhook(
+            url,
+            drop_pending_updates=True,
+            allowed_updates=allowed,
+        )
+        logger.info("set_webhook → result=%s, url=%s, allowed=%s", result, url, allowed)
+    except Exception as exc:
+        logger.error("set_webhook FAILED: %s", exc, exc_info=True)
+        return
+
+    try:
+        info = await bot.get_webhook_info()
+        logger.info(
+            "getWebhookInfo → url=%r, pending=%s, last_error=%r",
+            info.url, info.pending_update_count, info.last_error_message,
+        )
+    except Exception as exc:
+        logger.error("get_webhook_info FAILED: %s", exc, exc_info=True)
 
 
 async def bot_shutdown() -> None:
     """Викликається з lifespan FastAPI при зупинці."""
-    await bot.delete_webhook()
+    # НЕ видаляємо webhook тут — інакше rolling deploy на Railway
+    # призводить до race condition: новий контейнер set_webhook → старий delete_webhook.
     await bot.session.close()
 
 
