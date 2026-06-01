@@ -12,13 +12,21 @@ from app.routers import transactions, accounts, categories, debts, goals, budget
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# Заповнюється нижче якщо BOT_EMBEDDED=true (до визначення lifespan не потрібне)
+_bot_startup = None
+_bot_shutdown = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Ініціалізація бази даних...")
     await init_db()
     logger.info("База даних готова.")
+    if _bot_startup:
+        await _bot_startup()
     yield
+    if _bot_shutdown:
+        await _bot_shutdown()
     logger.info("Завершення роботи API.")
 
 
@@ -60,8 +68,10 @@ async def health_check():
 # (коли бот і API в одному Railway-сервісі)
 if os.getenv("BOT_EMBEDDED", "false").lower() == "true":
     try:
-        from bot.main import setup_webhook_routes
+        from bot.main import setup_webhook_routes, bot_startup, bot_shutdown
         setup_webhook_routes(app)
+        _bot_startup = bot_startup
+        _bot_shutdown = bot_shutdown
         logger.info("Webhook маршрути бота підключено.")
     except ImportError:
         logger.warning("Модуль бота не знайдено — webhook не підключено.")

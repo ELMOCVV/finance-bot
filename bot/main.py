@@ -53,21 +53,23 @@ def setup_webhook_routes(app: FastAPI) -> None:
         await dp.feed_update(bot, update)
         return JSONResponse({"ok": True})
 
-    @app.on_event("startup")
-    async def set_webhook() -> None:
-        from bot.scheduler import setup_scheduler
-        setup_scheduler(bot).start()
-        if settings.WEBHOOK_URL:
-            url = f"{settings.WEBHOOK_URL.rstrip('/')}{WEBHOOK_PATH}"
-            await bot.set_webhook(url)
-            logger.info("Webhook встановлено: %s", url)
-        else:
-            logger.warning("WEBHOOK_URL не вказано — webhook не встановлено.")
 
-    @app.on_event("shutdown")
-    async def remove_webhook() -> None:
-        await bot.delete_webhook()
-        await bot.session.close()
+async def bot_startup() -> None:
+    """Викликається з lifespan FastAPI при старті."""
+    from bot.scheduler import setup_scheduler
+    setup_scheduler(bot).start()
+    if settings.WEBHOOK_URL:
+        url = f"{settings.WEBHOOK_URL.rstrip('/')}{WEBHOOK_PATH}"
+        await bot.set_webhook(url)
+        logger.info("Webhook встановлено: %s", url)
+    else:
+        logger.warning("WEBHOOK_URL не вказано — webhook не встановлено.")
+
+
+async def bot_shutdown() -> None:
+    """Викликається з lifespan FastAPI при зупинці."""
+    await bot.delete_webhook()
+    await bot.session.close()
 
 
 # ── Standalone webhook-режим (Railway bot-сервіс + WEBHOOK_URL) ──────────────
