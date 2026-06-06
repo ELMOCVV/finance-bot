@@ -3,7 +3,9 @@ from pydantic import BaseModel, Field
 from typing import Optional, Literal
 
 
-class TransactionBase(BaseModel):
+# ── Create (строга валідація для вхідних даних) ───────────────────────────────
+
+class TransactionCreate(BaseModel):
     account_id: int
     category_id: Optional[int] = None
     type: Literal["expense", "income", "debt_payment", "transfer"]
@@ -14,10 +16,6 @@ class TransactionBase(BaseModel):
     source: Literal["manual", "bot_text", "bot_photo"] = "manual"
 
 
-class TransactionCreate(TransactionBase):
-    pass
-
-
 class TransactionUpdate(BaseModel):
     category_id: Optional[int] = None
     amount: Optional[float] = Field(None, gt=0)
@@ -25,10 +23,20 @@ class TransactionUpdate(BaseModel):
     date: Optional[datetime] = None
 
 
-class TransactionResponse(TransactionBase):
+# ── Response (м'яка валідація — дані можуть містити legacy-значення з БД) ────
+
+class TransactionResponse(BaseModel):
+    """Response schema: не використовує Literal/gt щоб не падати на legacy-даних."""
     id: int
     user_id: int
-    amount_uah: float
+    account_id: int
+    category_id: Optional[int] = None
+    type: str
+    amount: float
+    currency: str = "UAH"
+    amount_uah: float = 0.0
+    description: Optional[str] = None
     date: datetime
+    source: str = "manual"
 
     model_config = {"from_attributes": True}
