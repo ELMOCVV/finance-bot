@@ -16,9 +16,19 @@ def currency_flag(currency: str) -> str:
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(
-        InlineKeyboardButton(text="💸 Додати витрату", callback_data="menu:add_expense"),
-        InlineKeyboardButton(text="📷 Фото чека",      callback_data="menu:add_photo"),
+        InlineKeyboardButton(text="💸 Витрата", callback_data="menu:add_expense"),
+        InlineKeyboardButton(text="💰 Дохід",   callback_data="menu:add_income"),
     )
+    b.row(
+        InlineKeyboardButton(text="📊 Баланс",    callback_data="menu:balance"),
+        InlineKeyboardButton(text="📷 Фото чека", callback_data="menu:add_photo"),
+    )
+    b.row(InlineKeyboardButton(text="⚙️ Меню", callback_data="menu:settings"))
+    return b.as_markup()
+
+
+def settings_menu_keyboard() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
     b.row(
         InlineKeyboardButton(text="💰 Транзакції", callback_data="menu:transactions"),
         InlineKeyboardButton(text="🏦 Рахунки",    callback_data="menu:accounts"),
@@ -32,9 +42,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Бюджети", callback_data="menu:budgets"),
     )
     b.row(
-        InlineKeyboardButton(text="🔔 Підписки",  callback_data="menu:subscriptions"),
+        InlineKeyboardButton(text="🔔 Підписки",    callback_data="menu:subscriptions"),
         InlineKeyboardButton(text="❓ Запитати AI", callback_data="menu:ask_ai"),
     )
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main"))
     return b.as_markup()
 
 

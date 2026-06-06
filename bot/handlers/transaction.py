@@ -49,7 +49,13 @@ def _check_and_mark(chat_id: int, msg_id: int) -> bool:
 # Спільна логіка: парсинг + підбір категорії + показ підтвердження
 # ────────────────────────────────────────────────────────────────
 
-async def _parse_and_show(message: Message, db_user: User, text: str, state: FSMContext) -> None:
+async def _parse_and_show(
+    message: Message,
+    db_user: User,
+    text: str,
+    state: FSMContext,
+    force_type: str | None = None,
+) -> None:
     """Парсить текст транзакції та показує підтвердження (одиночне або кілька)."""
     async with AsyncSessionLocal() as db:
         acc_res = await db.execute(select(Account).where(Account.user_id == db_user.id))
@@ -79,7 +85,7 @@ async def _parse_and_show(message: Message, db_user: User, text: str, state: FSM
         await state.clear()
         return
 
-    tx_type = parsed.get("type", "expense")
+    tx_type = force_type or parsed.get("type", "expense")
     account = _find_account(accounts, parsed.get("account_hint"))
 
     async with AsyncSessionLocal() as db:
@@ -216,10 +222,18 @@ def _find_account(accounts: list, hint: str | None) -> Account:
 
 @router.message(AddTransaction.waiting_text)
 async def handle_transaction_from_state(message: Message, db_user: User, state: FSMContext) -> None:
-    """Обробляє текст після натискання «💸 Додати витрату»."""
+    """Обробляє текст після натискання «💸 Витрата»."""
     if _check_and_mark(message.chat.id, message.message_id):
         return
     await _parse_and_show(message, db_user, message.text.strip(), state)
+
+
+@router.message(AddTransaction.waiting_income_text)
+async def handle_income_from_state(message: Message, db_user: User, state: FSMContext) -> None:
+    """Обробляє текст після натискання «💰 Дохід» — тип income примусовий."""
+    if _check_and_mark(message.chat.id, message.message_id):
+        return
+    await _parse_and_show(message, db_user, message.text.strip(), state, force_type="income")
 
 
 @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))

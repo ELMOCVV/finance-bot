@@ -7,7 +7,8 @@ from aiogram.types import CallbackQuery, Message
 from app.database import AsyncSessionLocal
 from app.models import User
 from app.services.analytics_service import analytics_service
-from bot.keyboards.inline import back_keyboard, main_menu_keyboard
+from app.services.exchange_rate_service import exchange_rate_service
+from bot.keyboards.inline import back_keyboard, currency_flag, main_menu_keyboard, settings_menu_keyboard
 from bot.states import AddTransaction
 
 router = Router()
@@ -91,11 +92,67 @@ async def ask_ai_prompt(callback: CallbackQuery, state: FSMContext) -> None:
 async def menu_add_expense(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AddTransaction.waiting_text)
     await callback.message.edit_text(
-        "💸 <b>Додати транзакцію</b>\n\n"
-        "Напиши що і скільки витратив або отримав:\n\n"
-        "<i>«Кава 50 грн», «Продукти 350 UAH», «Зарплата 15000»</i>",
+        "💸 <b>Нова витрата</b>\n\n"
+        "Напиши що і скільки витратив:\n\n"
+        "<i>«Кава 50 грн», «Продукти 350 UAH», «Таксі 120»</i>",
         reply_markup=back_keyboard(),
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:add_income")
+async def menu_add_income(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(AddTransaction.waiting_income_text)
+    await callback.message.edit_text(
+        "💰 <b>Новий дохід</b>\n\n"
+        "Напиши що і скільки отримав:\n\n"
+        "<i>«Зарплата 15000», «Фріланс 5000 USD», «Аванс 7500»</i>",
+        reply_markup=back_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:balance")
+async def show_balance(callback: CallbackQuery, db_user: User) -> None:
+    from sqlalchemy import select
+    from app.models import Account
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(Account).where(Account.user_id == db_user.id))
+        accounts = res.scalars().all()
+
+    if not accounts:
+        await callback.message.edit_text(
+            "💼 <b>Рахунків ще немає.</b>\n\nДодайте перший рахунок:",
+            reply_markup=back_keyboard("menu:accounts"),
+        )
+        await callback.answer()
+        return
+
+    lines = ["💼 <b>Ваші рахунки:</b>\n"]
+    total_uah = 0.0
+    for acc in accounts:
+        flag = currency_flag(acc.currency)
+        star = " ⭐" if acc.is_default else ""
+        if acc.currency == "UAH":
+            uah = acc.balance
+            lines.append(f"{flag} {acc.name}{star} — {acc.balance:,.0f} UAH")
+        else:
+            uah = await exchange_rate_service.to_uah(acc.balance, acc.currency)
+            lines.append(
+                f"{flag} {acc.name}{star} — {acc.balance:,.2f} {acc.currency}"
+                f" (~{uah:,.0f} ₴)"
+            )
+        total_uah += uah
+
+    lines.append(f"\n💰 <b>Загалом: ~{total_uah:,.0f} ₴</b>")
+    await callback.message.edit_text("\n".join(lines), reply_markup=back_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "menu:settings")
+async def show_settings_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.message.edit_text("⚙️ <b>Меню:</b>", reply_markup=settings_menu_keyboard())
     await callback.answer()
 
 

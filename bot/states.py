@@ -18,6 +18,7 @@ class EditAccount(StatesGroup):
 
 class AddTransaction(StatesGroup):
     waiting_text = State()
+    waiting_income_text = State()
 
 
 class EditTransaction(StatesGroup):
