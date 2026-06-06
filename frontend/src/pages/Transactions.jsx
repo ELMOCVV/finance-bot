@@ -1,143 +1,115 @@
-import React, { useEffect, useState } from 'react'
-import { theme } from '../styles/theme'
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { fetchTransactions } from '../api/queries'
+import { SkeletonList } from '../components/Skeleton'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+const TX_ICONS  = { expense: '➖', income: '➕', transfer: '🔄', debt_payment: '💳' }
+const TX_LABELS = { expense: 'Витрата', income: 'Дохід', transfer: 'Переказ', debt_payment: 'Борг' }
+const FILTERS = [
+  { key: '', label: 'Все' },
+  { key: 'expense', label: 'Витрата' },
+  { key: 'income', label: 'Дохід' },
+  { key: 'transfer', label: 'Переказ' },
+]
 
-const TYPE_LABELS = { expense: 'Витрата', income: 'Дохід', transfer: 'Переказ', debt_payment: 'Погашення боргу' }
-const TYPE_COLORS = {
-  expense: theme.colors.expense,
-  income: theme.colors.income,
-  transfer: theme.colors.accent,
-  debt_payment: theme.colors.warning,
+function formatDate(dateStr) {
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-function TxRow({ tx }) {
-  const color = TYPE_COLORS[tx.type] || theme.colors.text
-  const sign = tx.type === 'income' ? '+' : '-'
-  return (
-    <div style={styles.row}>
-      <div style={{ ...styles.typeBadge, backgroundColor: `${color}20`, color }}>
-        {TYPE_LABELS[tx.type] || tx.type}
-      </div>
-      <div style={styles.desc}>{tx.description || '—'}</div>
-      <div style={styles.date}>{new Date(tx.date).toLocaleDateString('uk-UA')}</div>
-      <div style={{ ...styles.amount, color }}>
-        {sign}{tx.amount.toLocaleString()} {tx.currency}
-      </div>
-    </div>
-  )
+function groupByDate(txns) {
+  const groups = {}
+  for (const tx of txns) {
+    const key = (tx.date || '').split('T')[0]
+    if (!groups[key]) groups[key] = []
+    groups[key].push(tx)
+  }
+  return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a))
 }
 
 export default function Transactions({ userId }) {
-  const [transactions, setTransactions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [typeFilter, setTypeFilter] = useState('')
+  const [filter, setFilter] = useState('')
+  const [search, setSearch] = useState('')
 
-  const fetchTx = () => {
-    const params = new URLSearchParams({ user_id: userId, limit: 100 })
-    if (typeFilter) params.append('type', typeFilter)
-    fetch(`${API}/transactions?${params}`)
-      .then((r) => r.json())
-      .then((data) => setTransactions(Array.isArray(data) ? data : []))
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['transactions', userId, filter],
+    queryFn: () => fetchTransactions(userId, filter ? { type: filter } : {}),
+    staleTime: 60_000,
+  })
 
-  useEffect(() => { fetchTx() }, [userId, typeFilter])
+  const filtered = useMemo(() => {
+    const txns = data || []
+    if (!search.trim()) return txns
+    const q = search.toLowerCase()
+    return txns.filter((tx) => (tx.description || '').toLowerCase().includes(q))
+  }, [data, search])
+
+  const groups = useMemo(() => groupByDate(filtered), [filtered])
 
   return (
     <div>
-      <h1 style={styles.title}>Транзакції</h1>
+      <div className="page-header">
+        <div className="page-title">Транзакції</div>
+      </div>
 
-      <div style={styles.filters}>
-        {['', 'expense', 'income', 'transfer'].map((t) => (
+      <div className="filter-row">
+        {FILTERS.map((f) => (
           <button
-            key={t}
-            onClick={() => setTypeFilter(t)}
-            style={{
-              ...styles.filterBtn,
-              ...(typeFilter === t ? styles.filterBtnActive : {}),
-            }}
+            key={f.key}
+            className={`chip${filter === f.key ? ' active' : ''}`}
+            onClick={() => setFilter(f.key)}
           >
-            {t ? TYPE_LABELS[t] : 'Всі'}
+            {f.label}
           </button>
         ))}
       </div>
 
-      {loading ? (
-        <div style={styles.loading}>Завантаження...</div>
-      ) : transactions.length === 0 ? (
-        <div style={styles.empty}>Транзакцій не знайдено</div>
-      ) : (
-        <div style={styles.list}>
-          <div style={styles.header}>
-            <div style={styles.typeBadge}>Тип</div>
-            <div style={styles.desc}>Опис</div>
-            <div style={styles.date}>Дата</div>
-            <div style={styles.amount}>Сума</div>
+      <div className="search-wrap">
+        <input
+          className="search-input"
+          type="text"
+          placeholder="Пошук по опису..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {isLoading ? (
+        <SkeletonList rows={6} />
+      ) : isError ? (
+        <div className="error-msg">Помилка завантаження транзакцій</div>
+      ) : groups.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">💸</div>
+          <div className="empty-text">
+            {search ? 'Нічого не знайдено' : 'Транзакцій ще немає.\nДодай першу через бота!'}
           </div>
-          {transactions.map((tx) => <TxRow key={tx.id} tx={tx} />)}
         </div>
+      ) : (
+        groups.map(([date, txns]) => (
+          <div key={date} className="date-group">
+            <div className="date-heading">{formatDate(date)}</div>
+            {txns.map((tx) => (
+              <div key={tx.id} className="tx-item">
+                <div className={`tx-icon ${tx.type}`}>
+                  {TX_ICONS[tx.type] || '💸'}
+                </div>
+                <div className="tx-body">
+                  <div className="tx-desc">{tx.description || TX_LABELS[tx.type] || 'Транзакція'}</div>
+                  <div className="tx-meta">
+                    {tx.currency !== 'UAH' && `${tx.amount.toLocaleString('uk-UA')} ${tx.currency} · `}
+                    {new Date(tx.date).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+                <div className={`tx-amount ${tx.type}`}>
+                  {tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}
+                  {Math.round(tx.amount_uah || tx.amount).toLocaleString('uk-UA')} ₴
+                </div>
+              </div>
+            ))}
+          </div>
+        ))
       )}
     </div>
   )
-}
-
-const styles = {
-  title: { fontSize: theme.fontSizes['3xl'], fontWeight: '700', color: theme.colors.text, marginBottom: '24px' },
-  loading: { color: theme.colors.textMuted, textAlign: 'center', paddingTop: '80px' },
-  empty: { color: theme.colors.textMuted, textAlign: 'center', paddingTop: '80px' },
-  filters: { display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' },
-  filterBtn: {
-    padding: '8px 16px',
-    borderRadius: theme.radii.full,
-    border: `1px solid ${theme.colors.border}`,
-    background: 'transparent',
-    color: theme.colors.textMuted,
-    cursor: 'pointer',
-    fontSize: theme.fontSizes.sm,
-    fontFamily: theme.fonts.base,
-    transition: theme.transitions.fast,
-  },
-  filterBtnActive: {
-    backgroundColor: theme.colors.accent,
-    borderColor: theme.colors.accent,
-    color: theme.colors.white,
-  },
-  list: {
-    backgroundColor: theme.colors.surface,
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: theme.radii.lg,
-    overflow: 'hidden',
-  },
-  header: {
-    display: 'grid',
-    gridTemplateColumns: '120px 1fr 100px 140px',
-    padding: '12px 20px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    fontSize: theme.fontSizes.xs,
-    color: theme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  },
-  row: {
-    display: 'grid',
-    gridTemplateColumns: '120px 1fr 100px 140px',
-    padding: '14px 20px',
-    borderBottom: `1px solid ${theme.colors.border}`,
-    alignItems: 'center',
-    transition: theme.transitions.fast,
-  },
-  typeBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '4px 10px',
-    borderRadius: theme.radii.full,
-    fontSize: theme.fontSizes.xs,
-    fontWeight: '500',
-    width: 'fit-content',
-  },
-  desc: { fontSize: theme.fontSizes.sm, color: theme.colors.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '16px' },
-  date: { fontSize: theme.fontSizes.sm, color: theme.colors.textMuted },
-  amount: { fontSize: theme.fontSizes.sm, fontWeight: '600', textAlign: 'right' },
 }
