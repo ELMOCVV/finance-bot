@@ -49,7 +49,6 @@ def settings_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔔 Підписки", callback_data="menu:subscriptions"),
         InlineKeyboardButton(text="🏷 Категорії", callback_data="menu:categories"),
     )
-    b.row(InlineKeyboardButton(text="💸 Переказ", callback_data="menu:transfer"))
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main"))
     return b.as_markup()
 

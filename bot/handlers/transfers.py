@@ -13,6 +13,7 @@ from bot.keyboards.inline import (
     transfer_account_keyboard, transfer_confirm_keyboard,
 )
 from bot.states import CreateTransfer
+from bot.utils.fsm_edit import edit_host, HOST_MID_KEY
 
 router = Router()
 
@@ -45,6 +46,7 @@ async def start_transfer(callback: CallbackQuery, state: FSMContext, db_user: Us
         return
 
     await state.set_state(CreateTransfer.selecting_from)
+    await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
         "💸 <b>Переказ між рахунками</b>\n\nЗ якого рахунку перекажемо?",
         reply_markup=transfer_account_keyboard(accounts, "from"),
@@ -111,15 +113,22 @@ async def transfer_get_amount(message: Message, state: FSMContext, db_user: User
         amount = float((message.text or "").replace(",", ".").replace(" ", "").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await message.answer("Введіть коректне число більше 0:")
+        await edit_host(message, state, "💸 Введіть коректне число більше 0:")
         return
 
     data = await state.get_data()
+    host_mid = data.get(HOST_MID_KEY)
     accounts = await _get_user_accounts(db_user.id)
     from_acc = next((a for a in accounts if a.id == data.get("from_account_id")), None)
     to_acc = next((a for a in accounts if a.id == data.get("to_account_id")), None)
     if not from_acc or not to_acc:
         await state.clear()
+        if host_mid:
+            try:
+                await message.bot.edit_message_text("Сесія застаріла, спробуйте ще раз.", chat_id=message.chat.id, message_id=host_mid, reply_markup=back_keyboard(), parse_mode="HTML")
+                return
+            except Exception:
+                pass
         await message.answer("Сесія застаріла, спробуйте ще раз.", reply_markup=back_keyboard())
         return
 
@@ -152,7 +161,7 @@ async def transfer_get_amount(message: Message, state: FSMContext, db_user: User
         lines.append(rate_line)
     lines.append("\n✅ Підтвердити | ❌ Скасувати")
 
-    await message.answer("\n".join(lines), reply_markup=transfer_confirm_keyboard())
+    await edit_host(message, state, "\n".join(lines), reply_markup=transfer_confirm_keyboard())
 
 
 # ── Підтвердження і виконання переказу ───────────────────────────────────────

@@ -12,6 +12,7 @@ from bot.keyboards.inline import (
     currency_flag,
 )
 from bot.states import CreateAccount, EditAccount
+from bot.utils.fsm_edit import edit_host, HOST_MID_KEY
 
 router = Router()
 
@@ -42,7 +43,7 @@ async def _render_account_view(callback: CallbackQuery, db_user: User, acc_id: i
     await callback.answer()
 
 
-async def _show_accounts(target, db_user: User) -> None:
+async def _show_accounts(target, db_user: User, host_mid: int | None = None) -> None:
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Account).where(Account.user_id == db_user.id))
         accounts = result.scalars().all()
@@ -53,6 +54,11 @@ async def _show_accounts(target, db_user: User) -> None:
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb)
         await target.answer()
+    elif host_mid:
+        try:
+            await target.bot.edit_message_text(text, chat_id=target.chat.id, message_id=host_mid, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await target.answer(text, reply_markup=kb)
     else:
         await target.answer(text, reply_markup=kb)
 
@@ -69,6 +75,7 @@ async def show_accounts(callback: CallbackQuery, db_user: User) -> None:
 @router.callback_query(F.data == "acc:add")
 async def start_add_account(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(CreateAccount.waiting_name)
+    await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
         "🏦 <b>Новий рахунок</b>\n\nВведіть назву рахунку:\n"
         "<i>Наприклад: Картка ПриватБанк, Готівка, USDT-гаманець</i>",
@@ -81,11 +88,11 @@ async def start_add_account(callback: CallbackQuery, state: FSMContext) -> None:
 async def account_get_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if not name or len(name) > 128:
-        await message.answer("Введіть коректну назву (до 128 символів):")
+        await edit_host(message, state, "🏦 Введіть коректну назву (до 128 символів):", reply_markup=back_keyboard("menu:accounts"))
         return
     await state.update_data(acc_name=name)
     await state.set_state(CreateAccount.waiting_currency)
-    await message.answer("💱 Виберіть валюту рахунку:", reply_markup=currency_keyboard())
+    await edit_host(message, state, "💱 Виберіть валюту рахунку:", reply_markup=currency_keyboard())
 
 
 # ── Створення: крок 2 — валюта ────────────────────────────────────────────────
@@ -111,12 +118,13 @@ async def account_get_balance(message: Message, state: FSMContext, db_user: User
         balance = float((message.text or "").replace(",", ".").strip())
         assert balance >= 0
     except (ValueError, AssertionError):
-        await message.answer("Введіть коректне число ≥ 0:")
+        await edit_host(message, state, "💵 Введіть коректне число ≥ 0:")
         return
 
     data = await state.get_data()
     acc_name = data["acc_name"]
     currency = data["acc_currency"]
+    host_mid = data.get(HOST_MID_KEY)
 
     async with AsyncSessionLocal() as db:
         count_res = await db.execute(select(Account).where(Account.user_id == db_user.id))
@@ -134,11 +142,14 @@ async def account_get_balance(message: Message, state: FSMContext, db_user: User
         await db.refresh(new_acc)
 
     await state.clear()
-    await message.answer(
-        f"✅ Рахунок «<b>{acc_name}</b>» створено!\n"
-        f"💵 Баланс: {balance:.2f} {currency}",
-        reply_markup=back_keyboard("menu:accounts"),
-    )
+    text = f"✅ Рахунок «<b>{acc_name}</b>» створено!\n💵 Баланс: {balance:.2f} {currency}"
+    if host_mid:
+        try:
+            await message.bot.edit_message_text(text, chat_id=message.chat.id, message_id=host_mid, reply_markup=back_keyboard("menu:accounts"), parse_mode="HTML")
+            return
+        except Exception:
+            pass
+    await message.answer(text, reply_markup=back_keyboard("menu:accounts"))
 
 
 @router.callback_query(F.data == "cancel:account")
@@ -184,7 +195,7 @@ async def edit_name_prompt(callback: CallbackQuery, state: FSMContext, db_user: 
         await callback.answer("Рахунок не знайдено")
         return
     await state.set_state(EditAccount.waiting_name)
-    await state.update_data(edit_acc_id=acc_id, edit_old_name=acc.name)
+    await state.update_data(edit_acc_id=acc_id, edit_old_name=acc.name, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
         f"📝 Поточна назва: <b>«{acc.name}»</b>\n\nВведіть нову назву:",
         reply_markup=back_keyboard(f"acc:edit:{acc_id}"),
@@ -196,20 +207,16 @@ async def edit_name_prompt(callback: CallbackQuery, state: FSMContext, db_user: 
 async def edit_name_input(message: Message, state: FSMContext) -> None:
     new_name = (message.text or "").strip()
     if not new_name or len(new_name) > 128:
-        await message.answer("Введіть коректну назву (до 128 символів):")
+        await edit_host(message, state, "📝 Введіть коректну назву (до 128 символів):")
         return
     data = await state.get_data()
     await state.update_data(edit_new_name=new_name)
     acc_id = data["edit_acc_id"]
     old_name = data["edit_old_name"]
-    await message.answer(
-        f"📝 Змінити назву\n"
-        f"З: <b>«{old_name}»</b>\n"
-        f"На: <b>«{new_name}»</b>",
-        reply_markup=confirm_edit_keyboard(
-            confirm_cb="acc:confirm_name",
-            cancel_cb=f"acc:view:{acc_id}",
-        ),
+    await edit_host(
+        message, state,
+        f"📝 Змінити назву\nЗ: <b>«{old_name}»</b>\nНа: <b>«{new_name}»</b>",
+        reply_markup=confirm_edit_keyboard(confirm_cb="acc:confirm_name", cancel_cb=f"acc:view:{acc_id}"),
     )
 
 
@@ -245,7 +252,7 @@ async def edit_balance_prompt(callback: CallbackQuery, state: FSMContext, db_use
         await callback.answer("Рахунок не знайдено")
         return
     await state.set_state(EditAccount.waiting_balance)
-    await state.update_data(edit_acc_id=acc_id, edit_old_balance=acc.balance, edit_currency=acc.currency)
+    await state.update_data(edit_acc_id=acc_id, edit_old_balance=acc.balance, edit_currency=acc.currency, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
         f"💵 Поточний баланс: <b>{acc.balance:.2f} {acc.currency}</b>\n\n"
         "Введіть новий баланс:",
@@ -260,21 +267,17 @@ async def edit_balance_input(message: Message, state: FSMContext) -> None:
         new_balance = float((message.text or "").replace(",", ".").strip())
         assert new_balance >= 0
     except (ValueError, AssertionError):
-        await message.answer("Введіть коректне число ≥ 0:")
+        await edit_host(message, state, "💵 Введіть коректне число ≥ 0:")
         return
     data = await state.get_data()
     await state.update_data(edit_new_balance=new_balance)
     acc_id = data["edit_acc_id"]
     old_balance = data["edit_old_balance"]
     currency = data["edit_currency"]
-    await message.answer(
-        f"💵 Змінити баланс\n"
-        f"З: <b>{old_balance:.2f} {currency}</b>\n"
-        f"На: <b>{new_balance:.2f} {currency}</b>",
-        reply_markup=confirm_edit_keyboard(
-            confirm_cb="acc:confirm_bal",
-            cancel_cb=f"acc:view:{acc_id}",
-        ),
+    await edit_host(
+        message, state,
+        f"💵 Змінити баланс\nЗ: <b>{old_balance:.2f} {currency}</b>\nНа: <b>{new_balance:.2f} {currency}</b>",
+        reply_markup=confirm_edit_keyboard(confirm_cb="acc:confirm_bal", cancel_cb=f"acc:view:{acc_id}"),
     )
 
 

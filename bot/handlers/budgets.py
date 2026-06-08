@@ -12,6 +12,7 @@ from bot.keyboards.inline import (
     use_current_month_keyboard, back_keyboard,
 )
 from bot.states import CreateBudget
+from bot.utils.fsm_edit import edit_host, HOST_MID_KEY
 
 router = Router()
 
@@ -24,7 +25,7 @@ def _bar(spent: float, limit: float, length: int = 10) -> str:
     return "█" * filled + "░" * (length - filled)
 
 
-async def _show_budgets(target, db_user: User, month: str | None = None) -> None:
+async def _show_budgets(target, db_user: User, month: str | None = None, host_mid: int | None = None) -> None:
     if not month:
         month = datetime.utcnow().strftime("%Y-%m")
 
@@ -54,6 +55,11 @@ async def _show_budgets(target, db_user: User, month: str | None = None) -> None
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb)
         await target.answer()
+    elif host_mid:
+        try:
+            await target.bot.edit_message_text(text, chat_id=target.chat.id, message_id=host_mid, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await target.answer(text, reply_markup=kb)
     else:
         await target.answer(text, reply_markup=kb)
 
@@ -100,7 +106,7 @@ async def budget_get_category(callback: CallbackQuery, state: FSMContext, db_use
         await callback.answer("Категорію не знайдено")
         return
 
-    await state.update_data(budget_cat_id=cat_id, budget_cat_name=cat.name, budget_cat_icon=cat.icon or "")
+    await state.update_data(budget_cat_id=cat_id, budget_cat_name=cat.name, budget_cat_icon=cat.icon or "", **{HOST_MID_KEY: callback.message.message_id})
     await state.set_state(CreateBudget.waiting_amount)
     await callback.message.edit_text(
         f"📋 Бюджет: {cat.icon or ''} <b>{cat.name}</b>\n\n"
@@ -118,13 +124,14 @@ async def budget_get_amount(message: Message, state: FSMContext) -> None:
         amount = float((message.text or "").replace(",", ".").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await message.answer("Введіть коректне число більше 0:")
+        await edit_host(message, state, "📋 Введіть коректне число більше 0:")
         return
 
     await state.update_data(budget_amount=amount)
     await state.set_state(CreateBudget.waiting_month)
     current_month = datetime.utcnow().strftime("%Y-%m")
-    await message.answer(
+    await edit_host(
+        message, state,
         "📅 Для якого місяця встановити бюджет?\n\n"
         "Введіть у форматі <b>РРРР-ММ</b> або використайте поточний:",
         reply_markup=use_current_month_keyboard(current_month),
@@ -144,10 +151,7 @@ async def budget_get_month(message: Message, state: FSMContext, db_user: User) -
     try:
         datetime.strptime(text, "%Y-%m")
     except ValueError:
-        await message.answer(
-            "Невірний формат. Введіть РРРР-ММ (наприклад: 2026-06)\n"
-            "або натисніть «Поточний»:"
-        )
+        await edit_host(message, state, "📅 Невірний формат. Введіть РРРР-ММ (наприклад: 2026-06) або натисніть «Поточний»:")
         return
     await _save_budget(message, state, db_user, text)
 
@@ -157,6 +161,7 @@ async def _save_budget(target, state: FSMContext, db_user: User, month: str) -> 
     cat_id = data["budget_cat_id"]
     cat_name = data["budget_cat_name"]
     amount = data["budget_amount"]
+    host_mid = None if isinstance(target, CallbackQuery) else data.get(HOST_MID_KEY)
 
     async with AsyncSessionLocal() as db:
         existing = await db.execute(
@@ -188,9 +193,6 @@ async def _save_budget(target, state: FSMContext, db_user: User, month: str) -> 
         await db.commit()
 
     await state.clear()
-    ok_text = f"✅ Бюджет «{cat_name}» на {month} — {amount:.0f} UAH створено!"
     if isinstance(target, CallbackQuery):
-        await target.answer(ok_text, show_alert=True)
-    else:
-        await target.answer(ok_text)
-    await _show_budgets(target, db_user, month)
+        await target.answer(f"✅ Бюджет «{cat_name}» на {month} — {amount:.0f} UAH створено!", show_alert=True)
+    await _show_budgets(target, db_user, month, host_mid=host_mid)

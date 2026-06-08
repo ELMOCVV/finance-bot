@@ -69,7 +69,7 @@ async def show_recent_transactions(callback: CallbackQuery, db_user: User) -> No
 
 @router.callback_query(F.data == "menu:advisor")
 async def show_advisor_promo(callback: CallbackQuery) -> None:
-    await callback.message.answer(
+    await callback.message.edit_text(
         "💼 Твій персональний фінансовий асистент @MoneyDeckAssistantBot\n"
         "Він знає твої фінанси і відповість на будь-яке питання!",
         reply_markup=back_keyboard(),

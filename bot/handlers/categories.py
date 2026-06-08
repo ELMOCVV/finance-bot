@@ -13,13 +13,14 @@ from bot.keyboards.inline import (
     back_keyboard,
 )
 from bot.states import AddCategory, EditCategory
+from bot.utils.fsm_edit import edit_host, get_host_mid, HOST_MID_KEY
 
 router = Router()
 
 _TYPE_LABELS = {"expense": "💸 витрата", "income": "💰 дохід"}
 
 
-async def _show_categories(target, db_user: User) -> None:
+async def _show_categories(target, db_user: User, host_mid: int | None = None) -> None:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(Category).where(Category.user_id == db_user.id).order_by(Category.type, Category.name)
@@ -39,6 +40,11 @@ async def _show_categories(target, db_user: User) -> None:
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb)
         await target.answer()
+    elif host_mid:
+        try:
+            await target.bot.edit_message_text(text, chat_id=target.chat.id, message_id=host_mid, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await target.answer(text, reply_markup=kb)
     else:
         await target.answer(text, reply_markup=kb)
 
@@ -74,6 +80,7 @@ async def view_category(callback: CallbackQuery, db_user: User) -> None:
 @router.callback_query(F.data == "cat:add")
 async def start_add_category(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AddCategory.waiting_name)
+    await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
         "🏷 <b>Нова категорія</b>\n\nВведіть назву категорії:\n"
         "<i>Наприклад: Подарунки, Інвестиції</i>",
@@ -86,14 +93,11 @@ async def start_add_category(callback: CallbackQuery, state: FSMContext) -> None
 async def category_get_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if not name or len(name) > 128:
-        await message.answer("Введіть коректну назву (до 128 символів):")
+        await edit_host(message, state, "🏷 Введіть коректну назву (до 128 символів):", reply_markup=back_keyboard("menu:categories"))
         return
     await state.update_data(cat_name=name)
     await state.set_state(AddCategory.waiting_type)
-    await message.answer(
-        f"🏷 Категорія: <b>{name}</b>\n\nОберіть тип:",
-        reply_markup=category_type_keyboard(),
-    )
+    await edit_host(message, state, f"🏷 Категорія: <b>{name}</b>\n\nОберіть тип:", reply_markup=category_type_keyboard())
 
 
 @router.callback_query(AddCategory.waiting_type, F.data.startswith("cattype:"))
@@ -125,7 +129,7 @@ async def category_rename_prompt(callback: CallbackQuery, state: FSMContext, db_
         return
 
     await state.set_state(EditCategory.waiting_name)
-    await state.update_data(edit_cat_id=cat_id)
+    await state.update_data(edit_cat_id=cat_id, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
         f"📝 Поточна назва: «<b>{cat.name}</b>»\n\nВведіть нову назву:",
         reply_markup=back_keyboard(f"cat:view:{cat_id}"),
@@ -137,11 +141,12 @@ async def category_rename_prompt(callback: CallbackQuery, state: FSMContext, db_
 async def category_rename_input(message: Message, state: FSMContext, db_user: User) -> None:
     new_name = (message.text or "").strip()
     if not new_name or len(new_name) > 128:
-        await message.answer("Введіть коректну назву (до 128 символів):")
+        await edit_host(message, state, "📝 Введіть коректну назву (до 128 символів):")
         return
 
     data = await state.get_data()
     cat_id = data["edit_cat_id"]
+    host_mid = data.get(HOST_MID_KEY)
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Category).where(and_(Category.id == cat_id, Category.user_id == db_user.id)))
         cat = result.scalar_one_or_none()
@@ -150,10 +155,19 @@ async def category_rename_input(message: Message, state: FSMContext, db_user: Us
             await db.commit()
 
     await state.clear()
-    await message.answer(
-        f"✅ Назву змінено на «{new_name}»",
-        reply_markup=back_keyboard(f"cat:view:{cat_id}"),
-    )
+    if host_mid and cat:
+        try:
+            await message.bot.edit_message_text(
+                f"{cat.icon or '🏷'} <b>{cat.name}</b>\n\nТип: {_TYPE_LABELS.get(cat.type, cat.type)}",
+                chat_id=message.chat.id,
+                message_id=host_mid,
+                reply_markup=category_view_keyboard(cat_id),
+                parse_mode="HTML",
+            )
+            return
+        except Exception:
+            pass
+    await message.answer(f"✅ Назву змінено на «{new_name}»", reply_markup=back_keyboard(f"cat:view:{cat_id}"))
 
 
 # ── Видалення ─────────────────────────────────────────────────────────────────

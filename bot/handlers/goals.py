@@ -8,11 +8,12 @@ from app.models import User, Goal
 from bot.keyboards.inline import goals_keyboard, goal_view_keyboard, confirm_delete_keyboard, skip_keyboard, back_keyboard
 from bot.states import AddGoal
 from bot.utils.date_utils import fmt_date, parse_date, DATE_HINT
+from bot.utils.fsm_edit import edit_host, get_host_mid, HOST_MID_KEY
 
 router = Router()
 
 
-async def _show_goals(target, db_user: User) -> None:
+async def _show_goals(target, db_user: User, host_mid: int | None = None) -> None:
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Goal).where(Goal.user_id == db_user.id).order_by(Goal.deadline))
         goals = result.scalars().all()
@@ -23,6 +24,11 @@ async def _show_goals(target, db_user: User) -> None:
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb)
         await target.answer()
+    elif host_mid:
+        try:
+            await target.bot.edit_message_text(text, chat_id=target.chat.id, message_id=host_mid, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            await target.answer(text, reply_markup=kb)
     else:
         await target.answer(text, reply_markup=kb)
 
@@ -37,6 +43,7 @@ async def show_goals(callback: CallbackQuery, db_user: User) -> None:
 @router.callback_query(F.data == "goal:add")
 async def start_add_goal(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AddGoal.waiting_name)
+    await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
         "🎯 <b>Нова ціль</b>\n\nВведіть назву цілі:\n"
         "<i>Наприклад: MacBook Pro, Відпустка в Туреччині</i>",
@@ -49,11 +56,11 @@ async def start_add_goal(callback: CallbackQuery, state: FSMContext) -> None:
 async def goal_get_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if not name or len(name) > 256:
-        await message.answer("Введіть коректну назву (до 256 символів):")
+        await edit_host(message, state, "🎯 Введіть коректну назву цілі (до 256 символів):", reply_markup=back_keyboard("menu:goals"))
         return
     await state.update_data(goal_name=name)
     await state.set_state(AddGoal.waiting_amount)
-    await message.answer(f"💰 Ціль: <b>{name}</b>\n\nВведіть цільову суму:")
+    await edit_host(message, state, f"💰 Ціль: <b>{name}</b>\n\nВведіть цільову суму:")
 
 
 @router.message(AddGoal.waiting_amount)
@@ -62,11 +69,12 @@ async def goal_get_amount(message: Message, state: FSMContext) -> None:
         amount = float((message.text or "").replace(",", ".").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await message.answer("Введіть коректне число більше 0:")
+        await edit_host(message, state, "💰 Введіть коректне число більше 0:")
         return
     await state.update_data(goal_amount=amount)
     await state.set_state(AddGoal.waiting_deadline)
-    await message.answer(
+    await edit_host(
+        message, state,
         f"📅 Введіть дату дедлайну у форматі <b>{DATE_HINT}</b>\n<i>або пропустіть:</i>",
         reply_markup=skip_keyboard("goal:skip_deadline", "cancel:goal"),
     )
@@ -82,13 +90,14 @@ async def goal_get_deadline(message: Message, state: FSMContext, db_user: User) 
     try:
         deadline = parse_date((message.text or "").strip())
     except ValueError:
-        await message.answer(f"Невірний формат. Введіть дату {DATE_HINT} або натисніть «Пропустити»:")
+        await edit_host(message, state, f"📅 Невірний формат. Введіть дату <b>{DATE_HINT}</b> або натисніть «Пропустити»:", reply_markup=skip_keyboard("goal:skip_deadline", "cancel:goal"))
         return
     await _save_goal(message, state, db_user, deadline=deadline)
 
 
 async def _save_goal(target, state: FSMContext, db_user: User, deadline) -> None:
     data = await state.get_data()
+    host_mid = None if isinstance(target, CallbackQuery) else data.get(HOST_MID_KEY)
     async with AsyncSessionLocal() as db:
         goal = Goal(
             user_id=db_user.id,
@@ -101,12 +110,9 @@ async def _save_goal(target, state: FSMContext, db_user: User, deadline) -> None
         db.add(goal)
         await db.commit()
     await state.clear()
-    text = f"✅ Ціль «<b>{data['goal_name']}</b>» додано!"
     if isinstance(target, CallbackQuery):
-        await target.answer(text, show_alert=True)
-    else:
-        await target.answer(text)
-    await _show_goals(target, db_user)
+        await target.answer(f"✅ Ціль «{data['goal_name']}» додано!", show_alert=True)
+    await _show_goals(target, db_user, host_mid=host_mid)
 
 
 @router.callback_query(F.data == "cancel:goal")
