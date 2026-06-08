@@ -47,19 +47,12 @@ async def show_analytics(callback: CallbackQuery, db_user: User) -> None:
 
 @router.callback_query(F.data == "menu:transactions")
 async def show_recent_transactions(callback: CallbackQuery, db_user: User) -> None:
-    from sqlalchemy import select
-    from app.models import Transaction
     from bot.keyboards.inline import transaction_list_keyboard
-    async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(Transaction)
-            .where(Transaction.user_id == db_user.id)
-            .order_by(Transaction.date.desc())
-            .limit(10)
-        )
-        txs = res.scalars().all()
+    from bot.utils.tx_helpers import load_recent_activity
 
-    if not txs:
+    items = await load_recent_activity(db_user.id, limit=10)
+
+    if not items:
         await callback.message.edit_text(
             "💰 <b>Транзакцій ще немає.</b>",
             reply_markup=back_keyboard(),
@@ -69,7 +62,7 @@ async def show_recent_transactions(callback: CallbackQuery, db_user: User) -> No
 
     await callback.message.edit_text(
         "💰 <b>Останні транзакції</b> (натисни для деталей):",
-        reply_markup=transaction_list_keyboard(txs),
+        reply_markup=transaction_list_keyboard(items),
     )
     await callback.answer()
 

@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from bot.handlers import accounts, budgets, debts, goals, menu, photo, start, subscriptions, transaction
+from bot.handlers import accounts, budgets, debts, goals, menu, photo, start, subscriptions, transaction, transfers
 from bot.middlewares.user_middleware import UserMiddleware
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ dp.update.middleware(UserMiddleware())
 # Порядок важливий: FSM-хендлери реєструються ДО вільного тексту
 dp.include_router(start.router)
 dp.include_router(accounts.router)
+dp.include_router(transfers.router)
 dp.include_router(goals.router)
 dp.include_router(debts.router)
 dp.include_router(budgets.router)

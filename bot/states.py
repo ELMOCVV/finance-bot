@@ -16,6 +16,13 @@ class EditAccount(StatesGroup):
     waiting_balance = State()
 
 
+class CreateTransfer(StatesGroup):
+    selecting_from = State()
+    selecting_to = State()
+    waiting_amount = State()
+    confirming = State()
+
+
 class AddTransaction(StatesGroup):
     waiting_text = State()
     waiting_income_text = State()

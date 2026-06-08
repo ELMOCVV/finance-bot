@@ -1,8 +1,10 @@
 from datetime import datetime
+from types import SimpleNamespace
+
 from sqlalchemy import select, and_
 
 from app.database import AsyncSessionLocal
-from app.models import Account, Transaction, Budget
+from app.models import Account, Transaction, Transfer, Budget
 from app.services.exchange_rate_service import exchange_rate_service
 
 
@@ -52,6 +54,55 @@ def build_confirmation_text(d: dict) -> str:
         f"🏦 Рахунок: {account_name}\n"
         f"🏷 Категорія: {cat_display}"
     )
+
+
+async def load_recent_activity(user_id: int, limit: int = 10) -> list:
+    """Завантажує останні транзакції і перекази, об'єднані та відсортовані за датою.
+
+    Повертає список об'єктів з полями kind ('tx' | 'transfer'), id, type,
+    amount, currency, description, date — спільними для уніфікованого списку.
+    """
+    async with AsyncSessionLocal() as db:
+        tx_res = await db.execute(
+            select(Transaction)
+            .where(Transaction.user_id == user_id)
+            .order_by(Transaction.date.desc())
+            .limit(limit)
+        )
+        transactions = tx_res.scalars().all()
+
+        tr_res = await db.execute(
+            select(Transfer)
+            .where(Transfer.user_id == user_id)
+            .order_by(Transfer.date.desc())
+            .limit(limit)
+        )
+        transfers = tr_res.scalars().all()
+
+        acc_ids = {t.from_account_id for t in transfers} | {t.to_account_id for t in transfers}
+        accounts: dict[int, Account] = {}
+        if acc_ids:
+            acc_res = await db.execute(select(Account).where(Account.id.in_(acc_ids)))
+            accounts = {a.id: a for a in acc_res.scalars().all()}
+
+    items = [
+        SimpleNamespace(
+            kind="tx", id=tx.id, type=tx.type, amount=tx.amount,
+            currency=tx.currency, description=tx.description, date=tx.date,
+        )
+        for tx in transactions
+    ]
+    for tr in transfers:
+        from_acc = accounts.get(tr.from_account_id)
+        to_acc = accounts.get(tr.to_account_id)
+        desc = f"{from_acc.name if from_acc else '?'} → {to_acc.name if to_acc else '?'}"
+        items.append(SimpleNamespace(
+            kind="transfer", id=tr.id, type="transfer", amount=tr.amount,
+            currency=tr.currency, description=desc, date=tr.date,
+        ))
+
+    items.sort(key=lambda x: x.date, reverse=True)
+    return items[:limit]
 
 
 async def save_transaction(user_id: int, d: dict) -> Transaction:

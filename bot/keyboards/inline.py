@@ -23,6 +23,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📊 Баланс",    callback_data="menu:balance"),
         InlineKeyboardButton(text="📷 Фото чека", callback_data="menu:add_photo"),
     )
+    b.row(InlineKeyboardButton(text="💸 Переказ", callback_data="menu:transfer"))
     b.row(InlineKeyboardButton(text="⚙️ Меню", callback_data="menu:settings"))
     return b.as_markup()
 
@@ -94,6 +95,28 @@ def edit_account_keyboard(acc_id: int, is_default: bool = False) -> InlineKeyboa
     if not is_default:
         b.row(InlineKeyboardButton(text="⭐ Зробити основним", callback_data=f"acc:set_default:{acc_id}"))
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"acc:view:{acc_id}"))
+    return b.as_markup()
+
+
+# ── Перекази ──────────────────────────────────────────────────────────────────
+
+def transfer_account_keyboard(accounts: list, step: str) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for acc in accounts:
+        flag = currency_flag(acc.currency)
+        star = " ⭐" if acc.is_default else ""
+        b.row(InlineKeyboardButton(
+            text=f"{flag} {acc.name}{star} — {acc.balance:,.2f} {acc.currency}",
+            callback_data=f"transfer:{step}:{acc.id}",
+        ))
+    b.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="cancel:flow"))
+    return b.as_markup()
+
+
+def transfer_confirm_keyboard() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text="✅ Підтвердити", callback_data="transfer:confirm"))
+    b.row(InlineKeyboardButton(text="❌ Скасувати",   callback_data="cancel:flow"))
     return b.as_markup()
 
 
@@ -192,15 +215,17 @@ def categories_keyboard(categories: list, back_cb: str = "txedit:back") -> Inlin
     return b.as_markup()
 
 
-def transaction_list_keyboard(transactions: list) -> InlineKeyboardMarkup:
+def transaction_list_keyboard(items: list) -> InlineKeyboardMarkup:
+    """Список останніх транзакцій і переказів (items мають .kind = 'tx' | 'transfer')."""
     b = InlineKeyboardBuilder()
     type_emoji = {"expense": "➖", "income": "➕", "transfer": "🔄", "debt_payment": "💳"}
-    for tx in transactions:
-        e = type_emoji.get(tx.type, "💸")
-        desc = (tx.description or "")[:18]
-        date_s = tx.date.strftime("%d.%m")
-        label = f"{e} {tx.amount:.0f} {tx.currency} {desc} ({date_s})"
-        b.row(InlineKeyboardButton(text=label[:60], callback_data=f"tx:view:{tx.id}"))
+    for item in items:
+        e = type_emoji.get(item.type, "💸")
+        desc = (item.description or "")[:18]
+        date_s = item.date.strftime("%d.%m")
+        label = f"{e} {item.amount:.0f} {item.currency} {desc} ({date_s})"
+        prefix = "transfer:view" if item.kind == "transfer" else "tx:view"
+        b.row(InlineKeyboardButton(text=label[:60], callback_data=f"{prefix}:{item.id}"))
     b.row(InlineKeyboardButton(text="⬅️ Меню", callback_data="menu:main"))
     return b.as_markup()
 
