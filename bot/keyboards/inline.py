@@ -23,7 +23,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📊 Баланс",    callback_data="menu:balance"),
         InlineKeyboardButton(text="📷 Фото чека", callback_data="menu:add_photo"),
     )
-    b.row(InlineKeyboardButton(text="💼 Фінансист", callback_data="menu:advisor"))
+    b.row(
+        InlineKeyboardButton(text="🔄 Переказ",   callback_data="menu:transfer"),
+        InlineKeyboardButton(text="💼 Фінансист", callback_data="menu:advisor"),
+    )
     b.row(InlineKeyboardButton(text="⚙️ Меню", callback_data="menu:settings"))
     return b.as_markup()
 
@@ -428,13 +431,19 @@ def categories_manage_keyboard(categories: list) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     for cat in categories:
         label = f"{cat.icon or '🏷'} {cat.name}"
-        b.row(
-            InlineKeyboardButton(text=label[:32], callback_data=f"cat:rename:{cat.id}"),
-            InlineKeyboardButton(text="✏️ Редагувати", callback_data=f"cat:rename:{cat.id}"),
-            InlineKeyboardButton(text="🗑 Видалити",   callback_data=f"cat:del_confirm:{cat.id}"),
-        )
+        b.row(InlineKeyboardButton(text=label[:60], callback_data=f"cat:view:{cat.id}"))
     b.row(InlineKeyboardButton(text="➕ Додати категорію", callback_data="cat:add"))
     b.row(InlineKeyboardButton(text="⬅️ Меню", callback_data="menu:settings"))
+    return b.as_markup()
+
+
+def category_view_keyboard(cat_id: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.row(
+        InlineKeyboardButton(text="✏️ Перейменувати", callback_data=f"cat:rename:{cat_id}"),
+        InlineKeyboardButton(text="🗑 Видалити",      callback_data=f"cat:del_confirm:{cat_id}"),
+    )
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:categories"))
     return b.as_markup()
 
 

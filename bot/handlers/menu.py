@@ -71,7 +71,8 @@ async def show_recent_transactions(callback: CallbackQuery, db_user: User) -> No
 async def show_advisor_promo(callback: CallbackQuery) -> None:
     await callback.message.answer(
         "💼 Твій персональний фінансовий асистент @MoneyDeckAssistantBot\n"
-        "Він знає твої фінанси і відповість на будь-яке питання!"
+        "Він знає твої фінанси і відповість на будь-яке питання!",
+        reply_markup=back_keyboard(),
     )
     await callback.answer()
 

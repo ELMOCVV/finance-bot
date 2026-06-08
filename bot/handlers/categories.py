@@ -7,6 +7,7 @@ from app.database import AsyncSessionLocal
 from app.models import User, Category
 from bot.keyboards.inline import (
     categories_manage_keyboard,
+    category_view_keyboard,
     category_type_keyboard,
     confirm_delete_keyboard,
     back_keyboard,
@@ -45,6 +46,27 @@ async def _show_categories(target, db_user: User) -> None:
 @router.callback_query(F.data == "menu:categories")
 async def show_categories(callback: CallbackQuery, db_user: User) -> None:
     await _show_categories(callback, db_user)
+
+
+# ── Перегляд ──────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("cat:view:"))
+async def view_category(callback: CallbackQuery, db_user: User) -> None:
+    cat_id = int(callback.data.split(":")[2])
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Category).where(and_(Category.id == cat_id, Category.user_id == db_user.id)))
+        cat = result.scalar_one_or_none()
+
+    if not cat:
+        await callback.answer("Категорію не знайдено")
+        return
+
+    await callback.message.edit_text(
+        f"{cat.icon or '🏷'} <b>{cat.name}</b>\n\n"
+        f"Тип: {_TYPE_LABELS.get(cat.type, cat.type)}",
+        reply_markup=category_view_keyboard(cat_id),
+    )
+    await callback.answer()
 
 
 # ── Додавання ─────────────────────────────────────────────────────────────────
@@ -106,7 +128,7 @@ async def category_rename_prompt(callback: CallbackQuery, state: FSMContext, db_
     await state.update_data(edit_cat_id=cat_id)
     await callback.message.edit_text(
         f"📝 Поточна назва: «<b>{cat.name}</b>»\n\nВведіть нову назву:",
-        reply_markup=back_keyboard("menu:categories"),
+        reply_markup=back_keyboard(f"cat:view:{cat_id}"),
     )
     await callback.answer()
 
@@ -128,8 +150,10 @@ async def category_rename_input(message: Message, state: FSMContext, db_user: Us
             await db.commit()
 
     await state.clear()
-    await message.answer(f"✅ Назву змінено на «{new_name}»")
-    await _show_categories(message, db_user)
+    await message.answer(
+        f"✅ Назву змінено на «{new_name}»",
+        reply_markup=back_keyboard(f"cat:view:{cat_id}"),
+    )
 
 
 # ── Видалення ─────────────────────────────────────────────────────────────────
@@ -146,7 +170,7 @@ async def category_del_confirm(callback: CallbackQuery, db_user: User) -> None:
         "Транзакції залишаться без категорії, а пов'язані бюджети будуть видалені.",
         reply_markup=confirm_delete_keyboard(
             confirm_cb=f"cat:delete:{cat_id}",
-            cancel_cb="menu:categories",
+            cancel_cb=f"cat:view:{cat_id}",
         ),
     )
     await callback.answer()
