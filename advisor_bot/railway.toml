@@ -1,0 +1,15 @@
+# Money Deck Advisor — Railway конфігурація
+#
+# Окремий сервіс «money-deck-advisor» з того ж репозиторію.
+# Worker-процес без HTTP — health check вимкнений.
+#
+#   Start Command: python advisor_bot/main.py
+#   Env vars:      ADVISOR_BOT_TOKEN, ANTHROPIC_API_KEY, DATABASE_URL
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python advisor_bot/main.py"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
