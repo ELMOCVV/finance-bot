@@ -1,27 +1,26 @@
 # FinanceAI Bot — Railway конфігурація
 #
-# Створіть два сервіси в Railway dashboard з одного репозиторію:
+# Railway читає тільки кореневий railway.toml, тож усі сервіси одного
+# репозиторію стартують через спільний start.sh, який вибирає процес
+# за змінною середовища SERVICE_TYPE:
 #
-#   Сервіс 1 «api»:
-#     Start Command: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+#   Сервіс «api» (SERVICE_TYPE не задано / будь-яке інше значення):
 #     Health Check:  /health
 #     Env vars:      TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, DATABASE_URL,
 #                    WEBHOOK_URL, CORS_ORIGINS
 #
-#   Сервіс 2 «bot»:
-#     Start Command: python bot/main.py
+#   Сервіс «money-deck-advisor» (SERVICE_TYPE=advisor):
 #     Health Check:  (вимкнути — worker-процес без HTTP)
-#     Env vars:      TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, DATABASE_URL,
-#                    WEBHOOK_URL  (якщо потрібен webhook-режим + PORT)
+#     Env vars:      ADVISOR_BOT_TOKEN, ANTHROPIC_API_KEY, DATABASE_URL
 #
-# Або один сервіс із start.sh (see below) і змінною SERVICE_TYPE=api|bot.
+# (Окремий «bot»-сервіс webhook-режиму запускається через python bot/main.py
+#  — налаштуйте його startCommand вручну в Railway dashboard за потреби.)
 
 [build]
 builder = "NIXPACKS"
 
 [deploy]
-# PYTHONPATH=/app/backend — щоб `from app.config import ...` всередині backend/ працювало
-startCommand = "PYTHONPATH=/app/backend uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "bash start.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
