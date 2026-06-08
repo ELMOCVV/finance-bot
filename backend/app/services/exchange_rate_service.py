@@ -55,45 +55,76 @@ class ExchangeRateService:
         return result if result is not None else amount
 
     async def _fetch_rate(self, currency_from: str, currency_to: str) -> Optional[float]:
-        """Запитує курс: НБУ для фіатних, CoinGecko для крипти."""
+        """Запитує курс: НБУ для фіатних (з фолбеком на CoinGecko), CoinGecko для крипти."""
         crypto_ids = {"USDT": "tether", "BTC": "bitcoin", "ETH": "ethereum"}
 
         try:
             if currency_from in crypto_ids:
                 return await self._fetch_crypto_rate(crypto_ids[currency_from], currency_to)
-            elif currency_to in crypto_ids:
+            if currency_to in crypto_ids:
                 # Зворотній курс через крипто
                 rate = await self._fetch_crypto_rate(crypto_ids[currency_to], currency_from)
                 return 1 / rate if rate else None
-            else:
-                return await self._fetch_nbu_rate(currency_from, currency_to)
+
+            try:
+                rate = await self._fetch_nbu_rate(currency_from, currency_to)
+            except Exception as e:
+                rate = None
+                logger.warning("НБУ API недоступне для %s->%s (%s)", currency_from, currency_to, e)
+
+            if rate is not None:
+                return rate
+
+            logger.warning("НБУ не дав курс %s->%s, фолбек на CoinGecko", currency_from, currency_to)
+            return await self._fetch_fiat_rate_via_coingecko(currency_from, currency_to)
         except Exception as e:
             logger.error("Помилка отримання курсу %s->%s: %s", currency_from, currency_to, e)
             return None
 
     async def _fetch_nbu_rate(self, currency_from: str, currency_to: str) -> Optional[float]:
-        """Курс фіатних валют через НБУ API (базова валюта UAH)."""
+        """Курс фіатних валют через НБУ API.
+
+        НБУ зберігає курси відносно UAH і НЕ містить запису для самої UAH
+        (вона базова) — тому для UAH курс до неї дорівнює 1, а не запитується.
+        """
+        if currency_from == currency_to:
+            return 1.0
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            rate_from_uah = 1.0 if currency_from == "UAH" else await self._fetch_nbu_single(client, currency_from)
+            if rate_from_uah is None:
+                return None
+            rate_to_uah = 1.0 if currency_to == "UAH" else await self._fetch_nbu_single(client, currency_to)
+            if rate_to_uah is None:
+                return None
+            return rate_from_uah / rate_to_uah
+
+    async def _fetch_nbu_single(self, client: httpx.AsyncClient, valcode: str) -> Optional[float]:
+        """Курс однієї валюти до UAH (скільки UAH за 1 одиницю валюти) через НБУ API."""
+        response = await client.get(settings.NBU_API_URL, params={"json": "", "valcode": valcode})
+        response.raise_for_status()
+        data = response.json()
+        if not data:
+            return None
+        return data[0]["rate"]
+
+    async def _fetch_fiat_rate_via_coingecko(self, currency_from: str, currency_to: str) -> Optional[float]:
+        """Резервний курс фіат->фіат через CoinGecko: ціни USDT (≈ 1 USD) у двох валютах як міст."""
+        if currency_from == currency_to:
+            return 1.0
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
-                settings.NBU_API_URL,
-                params={"json": "", "valcode": currency_from},
+                f"{settings.COINGECKO_API_URL}/simple/price",
+                params={"ids": "tether", "vs_currencies": f"{currency_from.lower()},{currency_to.lower()}"},
             )
             response.raise_for_status()
-            data = response.json()
-            if not data:
+            prices = response.json().get("tether", {})
+            price_from = prices.get(currency_from.lower())
+            price_to = prices.get(currency_to.lower())
+            if not price_from or not price_to:
                 return None
-            # НБУ повертає курс currency_from / UAH
-            rate_to_uah = data[0]["rate"]
-            if currency_to == "UAH":
-                return rate_to_uah
-            # Якщо потрібна конвертація між двома фіатними
-            resp2 = await client.get(settings.NBU_API_URL, params={"json": "", "valcode": currency_to})
-            resp2.raise_for_status()
-            data2 = resp2.json()
-            if not data2:
-                return None
-            rate_to2_uah = data2[0]["rate"]
-            return rate_to_uah / rate_to2_uah
+            # 1 USDT ≈ price_from currency_from ≈ price_to currency_to
+            return price_to / price_from
 
     async def _fetch_crypto_rate(self, coin_id: str, vs_currency: str) -> Optional[float]:
         """Курс криптовалюти через CoinGecko."""
