@@ -67,14 +67,11 @@ async def show_recent_transactions(callback: CallbackQuery, db_user: User) -> No
     await callback.answer()
 
 
-@router.callback_query(F.data == "menu:ask_ai")
-async def ask_ai_prompt(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await callback.message.edit_text(
-        "💡 <b>Запитай AI-асистента</b>\n\n"
-        "Напиши будь-яке фінансове питання:\n\n"
-        "<i>«Як скоротити витрати на їжу?»</i>",
-        reply_markup=back_keyboard(),
+@router.callback_query(F.data == "menu:advisor")
+async def show_advisor_promo(callback: CallbackQuery) -> None:
+    await callback.message.answer(
+        "💼 Твій персональний фінансовий асистент @MoneyDeckAssistantBot\n"
+        "Він знає твої фінанси і відповість на будь-яке питання!"
     )
     await callback.answer()
 

@@ -70,3 +70,12 @@ class EditSubscription(StatesGroup):
     waiting_name = State()
     waiting_amount = State()
     waiting_hour = State()
+
+
+class AddCategory(StatesGroup):
+    waiting_name = State()
+    waiting_type = State()
+
+
+class EditCategory(StatesGroup):
+    waiting_name = State()
