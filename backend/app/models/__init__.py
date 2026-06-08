@@ -8,6 +8,7 @@ from app.models.goal import Goal
 from app.models.budget import Budget
 from app.models.exchange_rate import ExchangeRate
 from app.models.subscription import Subscription
+from app.models.chat_history import ChatHistory
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "Budget",
     "ExchangeRate",
     "Subscription",
+    "ChatHistory",
 ]

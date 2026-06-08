@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     WEBHOOK_URL: str = ""
 
+    # Окремий бот-фінансовий асистент (Money Deck Advisor)
+    ADVISOR_BOT_TOKEN: str = ""
+
     # Anthropic Claude (порожній рядок = AI-виклики повернуть помилку gracefully)
     ANTHROPIC_API_KEY: str = ""
 
