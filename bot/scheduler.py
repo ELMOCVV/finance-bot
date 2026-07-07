@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -8,8 +9,12 @@ from app.database import AsyncSessionLocal
 from app.models.subscription import Subscription
 from app.models.account import Account
 from app.models.user import User
+from app.models import BankConnection, BankCard
 
 logger = logging.getLogger(__name__)
+
+# Вікно досвірки: 3 години запасу, щоб перекрити затримку фіналізації hold.
+_RECONCILE_WINDOW_SECONDS = 3 * 60 * 60
 
 scheduler = AsyncIOScheduler(timezone="UTC")
 
@@ -75,6 +80,63 @@ async def check_subscriptions(bot) -> None:
                 logger.error("Помилка надсилання нагадування user=%s: %s", user.telegram_id, e)
 
 
+async def reconcile_monobank() -> None:
+    """Страховка на випадок пропущених Monobank-webhook (напр. коли webhook
+    прийшов лише з hold=true, а фінальний з hold=false так і не надійшов).
+
+    Кожні 20 хв проходить по всіх підключеннях з відстежуваними картками,
+    тягне виписку за останні 3 години і прогонить кожну фіналізовану операцію
+    (hold=false) через _process_statement_item. Дедуп по external_id відсіює
+    вже оброблене, тож повторні запуски не дублюють транзакції чи confirm-и.
+    Помилка на одному підключенні/картці не зупиняє решту.
+    """
+    # Лінивий імпорт — уникаємо циклічної залежності scheduler ↔ handlers.
+    from bot.handlers.monobank import _process_statement_item
+    from app.services import token_crypto
+    from app.services.monobank_service import monobank_service
+
+    now = int(time.time())
+    from_ts = now - _RECONCILE_WINDOW_SECONDS
+
+    async with AsyncSessionLocal() as db:
+        connections = (await db.execute(select(BankConnection))).scalars().all()
+
+    processed_conns = 0
+    for conn in connections:
+        try:
+            token = token_crypto.decrypt_token(conn.encrypted_token)
+            async with AsyncSessionLocal() as db:
+                cards = (await db.execute(
+                    select(BankCard).where(
+                        and_(BankCard.connection_id == conn.id, BankCard.is_tracked == True)
+                    )
+                )).scalars().all()
+
+            for card in cards:
+                try:
+                    # get_statement дотримується throttle 60 с — послідовно, не паралельно
+                    items = await monobank_service.get_statement(
+                        token, card.mono_account_id, from_ts, now
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Reconcile: statement failed (connection_id=%s, mono_account_id=%s): %s",
+                        conn.id, card.mono_account_id, e.__class__.__name__,
+                    )
+                    continue
+
+                for item in items:
+                    if item.get("hold") is True:
+                        continue  # ще не фіналізовано — пропускаємо
+                    await _process_statement_item(conn.id, card.mono_account_id, item)
+            processed_conns += 1
+        except Exception as e:
+            logger.error("Reconcile failed for connection_id=%s: %s", conn.id, e, exc_info=True)
+
+    if connections:
+        logger.info("Monobank reconcile finished: %d/%d connections", processed_conns, len(connections))
+
+
 def setup_scheduler(bot) -> AsyncIOScheduler:
     """Реєструє завдання і повертає планувальник."""
     scheduler.add_job(
@@ -86,5 +148,13 @@ def setup_scheduler(bot) -> AsyncIOScheduler:
         replace_existing=True,
         misfire_grace_time=300,  # дозволяємо 5 хв запізнення
     )
-    logger.info("Планувальник підписок налаштовано (щогодини в :00)")
+    scheduler.add_job(
+        reconcile_monobank,
+        trigger="interval",
+        minutes=20,
+        id="monobank_reconcile",
+        replace_existing=True,
+        misfire_grace_time=300,
+    )
+    logger.info("Планувальник налаштовано (підписки щогодини, Monobank-досвірка кожні 20 хв)")
     return scheduler

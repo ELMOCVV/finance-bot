@@ -401,6 +401,7 @@ async def _run_backfill(user_id: int, conn_id: int, token: str, period: str) -> 
                     amount_uah=amount_uah,
                     description=parsed["description"] or None,
                     source="monobank_import",
+                    external_id=parsed["mono_id"],
                 ))
                 imported += 1
                 total_uah += amount_uah if parsed["tx_type"] == "income" else -amount_uah
@@ -418,10 +419,26 @@ async def mono_cancel(callback: CallbackQuery, db_user: User, state: FSMContext)
 # ── Вхідні webhook-операції: підтвердження користувача ─────────────────────────
 
 async def handle_webhook_statement(connection_id: int, mono_account_id: str, item: dict) -> None:
-    """Обробляє StatementItem з webhook: категоризує та надсилає підтвердження.
+    """Точка входу webhook-роутера — делегує у спільний обробник."""
+    await _process_statement_item(connection_id, mono_account_id, item)
 
-    Викликається з FastAPI-роутера. Мовчки ігнорує операції по невідстежуваних
-    картках та операції у стані hold.
+
+def _has_pending_external(user_id: int, external_id: str) -> bool:
+    """Чи вже є непідтверджений confirm для цієї операції (дедуп у памʼяті)."""
+    return any(
+        p.get("user_id") == user_id and p.get("external_id") == external_id
+        for p in _pending.values()
+    )
+
+
+async def _process_statement_item(connection_id: int, mono_account_id: str, item: dict) -> None:
+    """Обробляє один StatementItem: пошук картки → парсинг → дедуп →
+    категоризація → надсилання підтвердження.
+
+    Спільна логіка для webhook-хендлера та reconciliation-job. Ідемпотентна:
+    якщо операцію вже записано (Transaction з таким external_id) або по ній вже
+    висить непідтверджений confirm — тихо пропускає, не дублюючи ні транзакцію,
+    ні повідомлення. Мовчки (з логом) ігнорує невідстежувані картки та hold.
     """
     async with AsyncSessionLocal() as db:
         card_res = await db.execute(
@@ -457,11 +474,35 @@ async def handle_webhook_statement(connection_id: int, mono_account_id: str, ite
                 connection_id, mono_account_id, item.get("id"),
             )
             return
+
+        external_id = parsed.get("mono_id")
+        # Дедуп: операцію вже записано (backfill / підтверджений confirm)?
+        if external_id:
+            already = await db.execute(
+                select(Transaction.id).where(
+                    and_(Transaction.user_id == user.id, Transaction.external_id == external_id)
+                )
+            )
+            if already.first():
+                logger.info(
+                    "Monobank item already recorded — skip (user_id=%s, external_id=%s)",
+                    user.id, external_id,
+                )
+                return
+
         tx_type = parsed["tx_type"]
         cats_res = await db.execute(
             select(Category).where(and_(Category.user_id == user.id, Category.type == tx_type))
         )
         cats = cats_res.scalars().all()
+
+    # Дедуп: по цій операції вже висить непідтверджений confirm?
+    if external_id and _has_pending_external(user.id, external_id):
+        logger.info(
+            "Monobank item already awaiting confirm — skip (user_id=%s, external_id=%s)",
+            user.id, external_id,
+        )
+        return
 
     cats_for_matcher = [{"id": c.id, "name": c.name} for c in cats]
     cat_match = await match_category(
@@ -484,6 +525,7 @@ async def handle_webhook_statement(connection_id: int, mono_account_id: str, ite
         "description": parsed["description"],
         "category_id": category_id,
         "category_name": category_name,
+        "external_id": external_id,
     })
 
     emoji = "➕" if tx_type == "income" else "➖"
@@ -513,6 +555,7 @@ def _pending_to_tx(p: dict) -> dict:
         "account_id": p["account_id"],
         "category_id": p.get("category_id"),
         "source": "monobank",
+        "external_id": p.get("external_id"),
     }
 
 
