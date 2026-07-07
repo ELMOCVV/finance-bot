@@ -135,7 +135,7 @@ class MonobankService:
         1 запит / 60 с через глобальний throttle.
         """
         if to_ts - from_ts > STATEMENT_MAX_RANGE:
-            raise ValueError("Період виписки перевищує максимум (31 доба + 1 рік)")
+            raise ValueError("Період виписки перевищує максимум (31 доба + 1 година)")
 
         await self._throttle_statement()
         async with httpx.AsyncClient(timeout=60.0) as client:
