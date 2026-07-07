@@ -432,15 +432,30 @@ async def handle_webhook_statement(connection_id: int, mono_account_id: str, ite
         )
         card = card_res.scalar_one_or_none()
         if not card or not card.is_tracked or not card.account_id:
+            logger.info(
+                "Monobank webhook ignored: card=%s tracked=%s account_id=%s "
+                "(connection_id=%s, mono_account_id=%s)",
+                bool(card), card.is_tracked if card else None,
+                card.account_id if card else None, connection_id, mono_account_id,
+            )
             return
         conn = await db.get(BankConnection, connection_id)
         user = await db.get(User, conn.user_id) if conn else None
         account = await db.get(Account, card.account_id)
         if not user or not account:
+            logger.info(
+                "Monobank webhook ignored: user=%s account=%s "
+                "(connection_id=%s, mono_account_id=%s, account_id=%s)",
+                bool(user), bool(account), connection_id, mono_account_id, card.account_id,
+            )
             return
 
         parsed = parse_statement_item(item, card.currency_code)
         if parsed is None:  # hold
+            logger.info(
+                "Monobank webhook ignored: hold=true (connection_id=%s, mono_account_id=%s, item_id=%s)",
+                connection_id, mono_account_id, item.get("id"),
+            )
             return
         tx_type = parsed["tx_type"]
         cats_res = await db.execute(
