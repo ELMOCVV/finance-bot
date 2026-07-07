@@ -126,6 +126,7 @@ async def save_transaction(user_id: int, d: dict) -> Transaction:
             description=description,
             date=datetime.utcnow(),
             source=d.get("source", "bot_text"),
+            external_id=d.get("external_id"),
         )
         db.add(tx)
 

@@ -21,8 +21,11 @@ class Transaction(Base):
     amount_uah: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     date: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    # manual | bot_text | bot_photo
+    # manual | bot_text | bot_photo | monobank | monobank_import | advisor_action
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    # Ідентифікатор операції у зовнішньому джерелі (напр. Monobank statementItem.id)
+    # для дедуплікації між webhook і reconciliation-job.
+    external_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     # Зв'язки
     user: Mapped["User"] = relationship("User", back_populates="transactions")

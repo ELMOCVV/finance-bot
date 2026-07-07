@@ -41,6 +41,8 @@ _PG_MIGRATIONS = [
     "UPDATE transactions SET source     = 'manual' WHERE source IS NULL",
     "UPDATE transactions SET amount_uah = amount   WHERE amount_uah IS NULL",
     "UPDATE transactions SET currency   = 'UAH'   WHERE currency IS NULL",
+    "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_id VARCHAR(64)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_external_id ON transactions (external_id)",
     # debts ─────────────────────────────────────────────────────────
     "ALTER TABLE debts ADD COLUMN IF NOT EXISTS currency          VARCHAR(10) DEFAULT 'UAH' NOT NULL",
     "ALTER TABLE debts ADD COLUMN IF NOT EXISTS next_payment_date DATE",
