@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 
     # Окремий бот-фінансовий асистент (Money Deck Advisor)
     ADVISOR_BOT_TOKEN: str = ""
+    # Базовий URL бекенд-API (Advisor виконує дії через нього).
+    # Локально — сам себе; у Railway — внутрішній URL сервісу api.
+    BACKEND_URL: str = "http://localhost:8000"
 
     # Anthropic Claude (порожній рядок = AI-виклики повернуть помилку gracefully)
     ANTHROPIC_API_KEY: str = ""

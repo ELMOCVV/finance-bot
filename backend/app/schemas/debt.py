@@ -21,6 +21,12 @@ class DebtUpdate(BaseModel):
     next_payment_date: Optional[date] = None
 
 
+class DebtPaymentRequest(BaseModel):
+    account_id: int
+    # Сума платежу — суворо більше 0.
+    amount: float = Field(..., gt=0)
+
+
 # ── Response (м'яка валідація) ────────────────────────────────────────────────
 
 class DebtResponse(BaseModel):
