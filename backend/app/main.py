@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import transactions, accounts, categories, debts, goals, budgets, analytics
+from app.routers import transactions, accounts, categories, debts, goals, budgets, analytics, monobank_webhook
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -57,6 +57,8 @@ app.include_router(debts.router,        prefix="/api/v1")
 app.include_router(goals.router,        prefix="/api/v1")
 app.include_router(budgets.router,      prefix="/api/v1")
 app.include_router(analytics.router,    prefix="/api/v1")
+# Monobank webhook — публічний шлях без /api/v1 (Monobank шле сюди події)
+app.include_router(monobank_webhook.router)
 
 
 @app.get("/health")

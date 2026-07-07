@@ -49,6 +49,7 @@ def settings_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔔 Підписки", callback_data="menu:subscriptions"),
         InlineKeyboardButton(text="🏷 Категорії", callback_data="menu:categories"),
     )
+    b.row(InlineKeyboardButton(text="🏦 Підключити Monobank", callback_data="mono:menu"))
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main"))
     return b.as_markup()
 
@@ -454,3 +455,67 @@ def category_type_keyboard() -> InlineKeyboardMarkup:
         ],
         [InlineKeyboardButton(text="❌ Скасувати", callback_data="cancel:flow")],
     ])
+
+
+# ── Monobank ──────────────────────────────────────────────────────────────────
+
+def monobank_menu_keyboard(connections: list) -> InlineKeyboardMarkup:
+    """Меню Monobank: наявні підключення + додати нове."""
+    b = InlineKeyboardBuilder()
+    for conn in connections:
+        n = len(conn.cards)
+        b.row(InlineKeyboardButton(
+            text=f"💳 Monobank ({n} карт.)", callback_data=f"mono:view:{conn.id}",
+        ))
+    b.row(InlineKeyboardButton(text="➕ Підключити Monobank", callback_data="mono:start"))
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:settings"))
+    return b.as_markup()
+
+
+def monobank_connection_keyboard(connection_id: int) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text="🔌 Відключити", callback_data=f"mono:disconnect_confirm:{connection_id}"))
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="mono:menu"))
+    return b.as_markup()
+
+
+def mono_cards_keyboard(accounts: list[dict], selected: set[int]) -> InlineKeyboardMarkup:
+    """Мультиселект карток Monobank зі вбудованими прапорцями ☐/☑️.
+
+    accounts — список dict з полями: currency (буквений), last4.
+    """
+    b = InlineKeyboardBuilder()
+    for i, acc in enumerate(accounts):
+        mark = "☑️" if i in selected else "☐"
+        label = f"{mark} 💳 Mono {acc['currency']} •{acc['last4']}"
+        b.row(InlineKeyboardButton(text=label, callback_data=f"mono:toggle:{i}"))
+    b.row(InlineKeyboardButton(text="Готово ✅", callback_data="mono:cards_done"))
+    b.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="mono:cancel"))
+    return b.as_markup()
+
+
+def mono_backfill_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Не підтягувати", callback_data="mono:bf:none")],
+        [InlineKeyboardButton(text="За тиждень", callback_data="mono:bf:week")],
+        [InlineKeyboardButton(text="За 31 день (максимум)", callback_data="mono:bf:month")],
+    ])
+
+
+def mono_confirm_keyboard(pid: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Так", callback_data=f"mono:ok:{pid}"),
+        InlineKeyboardButton(text="✏️ Змінити", callback_data=f"mono:edit:{pid}"),
+        InlineKeyboardButton(text="🚫 Не рахувати", callback_data=f"mono:skip:{pid}"),
+    ]])
+
+
+def mono_category_keyboard(categories: list, pid: str) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    for cat in categories:
+        b.row(InlineKeyboardButton(
+            text=f"{cat.icon or '🏷'} {cat.name}",
+            callback_data=f"mono:cat:{pid}:{cat.id}",
+        ))
+    b.row(InlineKeyboardButton(text="🚫 Не рахувати", callback_data=f"mono:skip:{pid}"))
+    return b.as_markup()

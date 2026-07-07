@@ -8,6 +8,18 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     WEBHOOK_URL: str = ""
 
+    # Публічна база для вхідних webhook-ів банків (Monobank).
+    # Наприклад: https://money-deck.up.railway.app
+    # Якщо порожньо — використовується WEBHOOK_URL.
+    WEBHOOK_BASE_URL: str = ""
+
+    # Ключ шифрування банківських токенів (Fernet). Будь-який рядок —
+    # якщо це не валідний Fernet-ключ, з нього деривується 32-байтний ключ.
+    TOKEN_ENCRYPTION_KEY: str = ""
+
+    # Базовий URL Monobank Open API
+    MONOBANK_API_URL: str = "https://api.monobank.ua"
+
     # Окремий бот-фінансовий асистент (Money Deck Advisor)
     ADVISOR_BOT_TOKEN: str = ""
 

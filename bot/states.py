@@ -79,3 +79,9 @@ class AddCategory(StatesGroup):
 
 class EditCategory(StatesGroup):
     waiting_name = State()
+
+
+class ConnectMonobank(StatesGroup):
+    waiting_token = State()
+    selecting_cards = State()
+    selecting_period = State()
