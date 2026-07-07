@@ -27,3 +27,8 @@ class AccountResponse(AccountBase):
     balance: float
 
     model_config = {"from_attributes": True}
+
+
+class AdjustBalanceRequest(BaseModel):
+    # Новий баланс рахунку. Може бути 0, але не від'ємним.
+    new_balance: float = Field(..., ge=0)
