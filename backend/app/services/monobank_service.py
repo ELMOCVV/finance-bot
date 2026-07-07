@@ -20,8 +20,8 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Максимальне вікно виписки за один запит: 31 доба + 1 рік (за докою Monobank).
-STATEMENT_MAX_RANGE = 60 * 60 * 24 * 31 + 60 * 60 * 24 * 366
+# Максимальне вікно виписки за один запит: 31 доба + 1 година (за докою Monobank).
+STATEMENT_MAX_RANGE = 60 * 60 * 24 * 31 + 60 * 60
 # Мінімальний інтервал між запитами виписки (ліміт 1 req / 60 s).
 _RATE_LIMIT_SECONDS = 60.0
 
@@ -131,7 +131,7 @@ class MonobankService:
     ) -> list[dict]:
         """GET /personal/statement/{account}/{from}/{to} — виписка за період.
 
-        Максимум 31 доба + 1 рік за один запит. Дотримується ліміту
+        Максимум 31 доба + 1 година за один запит. Дотримується ліміту
         1 запит / 60 с через глобальний throttle.
         """
         if to_ts - from_ts > STATEMENT_MAX_RANGE:
