@@ -125,8 +125,17 @@ async def reconcile_monobank() -> None:
                     )
                     continue
 
+                logger.info(
+                    "Reconcile: fetched %d items (connection_id=%s, mono_account_id=%s)",
+                    len(items), conn.id, card.mono_account_id,
+                )
                 for item in items:
                     if item.get("hold") is True:
+                        logger.info(
+                            "Reconcile: item still hold=true, skipping (connection_id=%s, "
+                            "mono_account_id=%s, item_id=%s)",
+                            conn.id, card.mono_account_id, item.get("id"),
+                        )
                         continue  # ще не фіналізовано — пропускаємо
                     await _process_statement_item(conn.id, card.mono_account_id, item)
             processed_conns += 1
