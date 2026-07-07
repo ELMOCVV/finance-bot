@@ -9,6 +9,8 @@ from app.models.budget import Budget
 from app.models.exchange_rate import ExchangeRate
 from app.models.subscription import Subscription
 from app.models.chat_history import ChatHistory
+from app.models.bank_connection import BankConnection
+from app.models.bank_card import BankCard
 
 __all__ = [
     "User",
@@ -22,4 +24,6 @@ __all__ = [
     "ExchangeRate",
     "Subscription",
     "ChatHistory",
+    "BankConnection",
+    "BankCard",
 ]
