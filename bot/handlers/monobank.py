@@ -61,6 +61,15 @@ def _register_pending(data: dict) -> str:
     return pid
 
 
+def clear_pending_for_user(user_id: int) -> int:
+    """Прибирає непідтверджені Monobank-операції юзера (напр. після reset даних),
+    щоб не лишалось застарілих confirm-кнопок на видалені дані."""
+    stale = [pid for pid, p in _pending.items() if p.get("user_id") == user_id]
+    for pid in stale:
+        _pending.pop(pid, None)
+    return len(stale)
+
+
 # ── Утиліти ───────────────────────────────────────────────────────────────────
 
 def _last4(*candidates: str | None) -> str:

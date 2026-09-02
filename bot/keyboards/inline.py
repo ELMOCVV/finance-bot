@@ -50,8 +50,23 @@ def settings_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏷 Категорії", callback_data="menu:categories"),
     )
     b.row(InlineKeyboardButton(text="🏦 Підключити Monobank", callback_data="mono:menu"))
+    b.row(InlineKeyboardButton(text="⚠️ Скинути всі дані", callback_data="reset:start"))
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main"))
     return b.as_markup()
+
+
+def reset_step1_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Скасувати", callback_data="menu:settings"),
+        InlineKeyboardButton(text="Продовжити ➡️", callback_data="reset:step2"),
+    ]])
+
+
+def reset_step2_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Ні, скасувати", callback_data="menu:settings"),
+        InlineKeyboardButton(text="🗑 Так, скинути все", callback_data="reset:confirm"),
+    ]])
 
 
 # ── Рахунки ───────────────────────────────────────────────────────────────────
