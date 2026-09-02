@@ -64,16 +64,21 @@ def mcc_to_hint(mcc: int | None) -> str:
 
 
 def parse_statement_item(item: dict[str, Any], currency_code: int) -> dict | None:
-    """StatementItem → нормалізована операція або None (якщо hold=true).
+    """StatementItem → нормалізована операція або None.
+
+    hold блокує обробку ЛИШЕ для витрат (expense, amount < 0): авторизація може
+    ще змінитись або скасуватись. Для надходжень (income, amount > 0) кошти
+    фактично фінальні одразу, тож повертаємо операцію навіть у стані hold —
+    щоб не тримати вхідні перекази годинами.
 
     Повертає dict: amount (додатнє число), tx_type (expense|income),
     description, mcc, currency, mono_id, timestamp.
     """
-    if item.get("hold") is True:
-        return None
     raw = item.get("amount", 0)
-    amount = abs(raw) / 100
     tx_type = "income" if raw > 0 else "expense"
+    if item.get("hold") is True and tx_type == "expense":
+        return None
+    amount = abs(raw) / 100
     return {
         "mono_id": item.get("id"),
         "amount": amount,

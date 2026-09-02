@@ -503,11 +503,14 @@ def mono_backfill_keyboard() -> InlineKeyboardMarkup:
 
 
 def mono_confirm_keyboard(pid: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Так", callback_data=f"mono:ok:{pid}"),
-        InlineKeyboardButton(text="✏️ Змінити", callback_data=f"mono:edit:{pid}"),
-        InlineKeyboardButton(text="🚫 Не рахувати", callback_data=f"mono:skip:{pid}"),
-    ]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Так", callback_data=f"mono:ok:{pid}"),
+            InlineKeyboardButton(text="✏️ Змінити", callback_data=f"mono:edit:{pid}"),
+            InlineKeyboardButton(text="🚫 Не рахувати", callback_data=f"mono:skip:{pid}"),
+        ],
+        [InlineKeyboardButton(text="💬 Коментар", callback_data=f"mono:comment:{pid}")],
+    ])
 
 
 def mono_category_keyboard(categories: list, pid: str) -> InlineKeyboardMarkup:
@@ -517,5 +520,8 @@ def mono_category_keyboard(categories: list, pid: str) -> InlineKeyboardMarkup:
             text=f"{cat.icon or '🏷'} {cat.name}",
             callback_data=f"mono:cat:{pid}:{cat.id}",
         ))
-    b.row(InlineKeyboardButton(text="🚫 Не рахувати", callback_data=f"mono:skip:{pid}"))
+    b.row(
+        InlineKeyboardButton(text="💬 Коментар", callback_data=f"mono:comment:{pid}"),
+        InlineKeyboardButton(text="🚫 Не рахувати", callback_data=f"mono:skip:{pid}"),
+    )
     return b.as_markup()

@@ -85,3 +85,7 @@ class ConnectMonobank(StatesGroup):
     waiting_token = State()
     selecting_cards = State()
     selecting_period = State()
+
+
+class MonoComment(StatesGroup):
+    waiting_text = State()

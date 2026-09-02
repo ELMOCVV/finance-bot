@@ -37,7 +37,7 @@ from bot.keyboards.inline import (
     back_keyboard,
 )
 from bot.services.category_matcher import match_category
-from bot.states import ConnectMonobank
+from bot.states import ConnectMonobank, MonoComment
 from bot.utils.fsm_edit import edit_host, HOST_MID_KEY
 from bot.utils.tx_helpers import save_transaction
 
@@ -528,21 +528,34 @@ async def _process_statement_item(connection_id: int, mono_account_id: str, item
         "external_id": external_id,
     })
 
-    emoji = "➕" if tx_type == "income" else "➖"
-    text = (
-        f"🏦 <b>Нова операція Monobank</b>\n\n"
-        f"{emoji} <b>{parsed['amount']:.2f} {parsed['currency']}</b>\n"
-        f"📝 {parsed['description'] or '—'}\n"
-        f"🏦 {account.name}\n"
-        f"🏷 {category_name}\n\n"
-        f"Додати цю операцію?"
-    )
     from bot.main import bot
     try:
-        await bot.send_message(user.telegram_id, text, reply_markup=mono_confirm_keyboard(pid))
+        await bot.send_message(user.telegram_id, _confirm_text(_pending[pid]),
+                               reply_markup=mono_confirm_keyboard(pid))
     except Exception as e:
         logger.warning("Monobank confirm send failed: %s", e.__class__.__name__)
         _pending.pop(pid, None)
+
+
+def _combined_description(p: dict) -> str | None:
+    """Опис операції з коментарем користувача (якщо є): '{опис} — {коментар}'."""
+    orig = p.get("description")
+    comment = p.get("custom_comment")
+    if comment:
+        return f"{orig} — {comment}" if orig else comment
+    return orig
+
+
+def _confirm_text(p: dict) -> str:
+    emoji = "➕" if p["tx_type"] == "income" else "➖"
+    return (
+        f"🏦 <b>Нова операція Monobank</b>\n\n"
+        f"{emoji} <b>{p['amount']:.2f} {p['currency']}</b>\n"
+        f"📝 {_combined_description(p) or '—'}\n"
+        f"🏦 {p.get('account_name', '—')}\n"
+        f"🏷 {p.get('category_name', 'Без категорії')}\n\n"
+        f"Додати цю операцію?"
+    )
 
 
 def _pending_to_tx(p: dict) -> dict:
@@ -551,7 +564,7 @@ def _pending_to_tx(p: dict) -> dict:
         "tx_type": p["tx_type"],
         "amount": p["amount"],
         "currency": p["currency"],
-        "description": p["description"],
+        "description": _combined_description(p),
         "account_id": p["account_id"],
         "category_id": p.get("category_id"),
         "source": "monobank",
@@ -634,3 +647,41 @@ async def mono_confirm_set_category(callback: CallbackQuery, db_user: User) -> N
         reply_markup=back_keyboard("menu:main"),
     )
     await callback.answer()
+
+
+# ── Коментар до операції ──────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("mono:comment:"))
+async def mono_comment_start(callback: CallbackQuery, db_user: User, state: FSMContext) -> None:
+    pid = callback.data.split(":")[2]
+    p = _pending.get(pid)
+    if not p or p.get("user_id") != db_user.id:
+        await callback.answer("Операція застаріла", show_alert=True)
+        return
+    await state.set_state(MonoComment.waiting_text)
+    await state.update_data(mono_pid=pid, **{HOST_MID_KEY: callback.message.message_id})
+    await callback.message.edit_text("💬 Напиши коментар до цієї операції:")
+    await callback.answer()
+
+
+@router.message(MonoComment.waiting_text)
+async def mono_comment_input(message: Message, db_user: User, state: FSMContext) -> None:
+    comment = (message.text or "").strip()
+    data = await state.get_data()
+    pid = data.get("mono_pid")
+    try:
+        await message.delete()  # прибираємо повідомлення юзера, лишаємо єдину картку
+    except Exception:
+        pass
+
+    p = _pending.get(pid)
+    if not p or p.get("user_id") != db_user.id:
+        await edit_host(message, state, "Операція застаріла.", reply_markup=back_keyboard("menu:main"))
+        await state.clear()
+        return
+
+    if comment:
+        p["custom_comment"] = comment[:200]
+    # Повертаємо ту саму картку підтвердження (тепер з коментарем в описі)
+    await edit_host(message, state, _confirm_text(p), reply_markup=mono_confirm_keyboard(pid))
+    await state.clear()

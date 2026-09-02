@@ -130,13 +130,15 @@ async def reconcile_monobank() -> None:
                     len(items), conn.id, card.mono_account_id,
                 )
                 for item in items:
-                    if item.get("hold") is True:
+                    # hold блокує лише витрати — вони можуть ще змінитись/скасуватись;
+                    # надходження (amount > 0) фінальні одразу, тож пропускаємо їх далі.
+                    if item.get("hold") is True and item.get("amount", 0) < 0:
                         logger.info(
-                            "Reconcile: item still hold=true, skipping (connection_id=%s, "
+                            "Reconcile: expense still hold=true, skipping (connection_id=%s, "
                             "mono_account_id=%s, item_id=%s)",
                             conn.id, card.mono_account_id, item.get("id"),
                         )
-                        continue  # ще не фіналізовано — пропускаємо
+                        continue  # ще не фіналізовано — чекаємо наступного циклу
                     await _process_statement_item(conn.id, card.mono_account_id, item)
             processed_conns += 1
         except Exception as e:
