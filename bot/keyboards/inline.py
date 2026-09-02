@@ -50,6 +50,7 @@ def settings_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏷 Категорії", callback_data="menu:categories"),
     )
     b.row(InlineKeyboardButton(text="🏦 Підключити Monobank", callback_data="mono:menu"))
+    b.row(InlineKeyboardButton(text="⚠️ Скинути всі дані", callback_data="reset:start"))
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main"))
     return b.as_markup()
 
@@ -321,6 +322,24 @@ def confirm_delete_keyboard(confirm_cb: str, cancel_cb: str) -> InlineKeyboardMa
         [InlineKeyboardButton(text="✅ Так, видалити", callback_data=confirm_cb)],
         [InlineKeyboardButton(text="❌ Скасувати",      callback_data=cancel_cb)],
     ])
+
+
+# ── Скидання всіх даних ───────────────────────────────────────────────────────
+
+def reset_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Крок 1: попередження про наслідки."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Скасувати",   callback_data="reset:cancel"),
+        InlineKeyboardButton(text="Продовжити ➡️", callback_data="reset:confirm"),
+    ]])
+
+
+def reset_final_keyboard() -> InlineKeyboardMarkup:
+    """Крок 2: остаточне підтвердження."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Ні, скасувати",     callback_data="reset:cancel"),
+        InlineKeyboardButton(text="🗑 Так, скинути все", callback_data="reset:do"),
+    ]])
 
 
 # ── Утиліти ───────────────────────────────────────────────────────────────────

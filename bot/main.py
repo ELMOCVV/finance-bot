@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from bot.handlers import accounts, budgets, categories, debts, goals, menu, monobank, photo, start, subscriptions, transaction, transfers
+from bot.handlers import accounts, budgets, categories, debts, goals, menu, monobank, photo, reset, start, subscriptions, transaction, transfers
 from bot.middlewares.user_middleware import UserMiddleware
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ dp.include_router(budgets.router)
 dp.include_router(subscriptions.router)
 dp.include_router(categories.router)
 dp.include_router(monobank.router)
+dp.include_router(reset.router)
 dp.include_router(menu.router)
 dp.include_router(transaction.router)
 dp.include_router(photo.router)
