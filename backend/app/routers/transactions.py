@@ -5,9 +5,9 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Transaction, Account, Budget
+from app.models import Transaction, Account
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionResponse
-from app.services.exchange_rate_service import exchange_rate_service
+from app.services.transaction_service import create_transaction_record
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -74,48 +74,18 @@ async def create_transaction(
     if not account:
         raise HTTPException(status_code=404, detail="Рахунок не знайдено")
 
-    # Конвертація в UAH
-    amount_uah = await exchange_rate_service.to_uah(payload.amount, payload.currency)
-
-    tx = Transaction(
+    return await create_transaction_record(
+        db,
         user_id=user_id,
-        account_id=payload.account_id,
-        category_id=payload.category_id,
+        account=account,
         type=payload.type,
         amount=payload.amount,
         currency=payload.currency,
-        amount_uah=amount_uah,
+        category_id=payload.category_id,
         description=payload.description,
-        date=payload.date or datetime.utcnow(),
+        date=payload.date,
         source=payload.source,
     )
-    db.add(tx)
-
-    # Оновлення балансу рахунку
-    if payload.type == "income":
-        account.balance += payload.amount
-    elif payload.type in ("expense", "debt_payment"):
-        account.balance -= payload.amount
-
-    # Оновлення витраченої суми в бюджеті
-    if payload.type == "expense" and payload.category_id:
-        month_str = (payload.date or datetime.utcnow()).strftime("%Y-%m")
-        budget_result = await db.execute(
-            select(Budget).where(
-                and_(
-                    Budget.user_id == user_id,
-                    Budget.category_id == payload.category_id,
-                    Budget.month == month_str,
-                )
-            )
-        )
-        budget = budget_result.scalar_one_or_none()
-        if budget:
-            budget.spent_amount += amount_uah
-
-    await db.flush()
-    await db.refresh(tx)
-    return tx
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)

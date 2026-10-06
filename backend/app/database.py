@@ -43,6 +43,8 @@ _PG_MIGRATIONS = [
     "UPDATE transactions SET currency   = 'UAH'   WHERE currency IS NULL",
     "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_id VARCHAR(64)",
     "CREATE INDEX IF NOT EXISTS ix_transactions_external_id ON transactions (external_id)",
+    "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS merchant VARCHAR(128)",
+    "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS card     VARCHAR(64)",
     # debts ─────────────────────────────────────────────────────────
     "ALTER TABLE debts ADD COLUMN IF NOT EXISTS currency          VARCHAR(10) DEFAULT 'UAH' NOT NULL",
     "ALTER TABLE debts ADD COLUMN IF NOT EXISTS next_payment_date DATE",
@@ -59,6 +61,13 @@ _PG_MIGRATIONS = [
     "UPDATE accounts SET is_default = FALSE WHERE is_default IS NULL",
 ]
 
+# SQLite не підтримує ADD COLUMN IF NOT EXISTS — помилка «duplicate column»
+# на вже мігрованій базі просто ігнорується.
+_SQLITE_MIGRATIONS = [
+    "ALTER TABLE transactions ADD COLUMN merchant VARCHAR(128)",
+    "ALTER TABLE transactions ADD COLUMN card VARCHAR(64)",
+]
+
 
 async def init_db() -> None:
     """Створює всі таблиці при старті."""
@@ -73,6 +82,13 @@ async def init_db() -> None:
                     await conn.execute(text(stmt))
                 except Exception as exc:
                     logger.warning("Migration skipped (%s): %.80s", exc.__class__.__name__, stmt)
+    else:
+        for stmt in _SQLITE_MIGRATIONS:
+            async with engine.begin() as conn:
+                try:
+                    await conn.execute(text(stmt))
+                except Exception:
+                    pass  # колонка вже існує
 
 
 async def get_db() -> AsyncSession:

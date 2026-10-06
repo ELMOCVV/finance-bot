@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Базовий URL Monobank Open API
     MONOBANK_API_URL: str = "https://api.monobank.ua"
 
+    # Apple Wallet webhook (iOS «Команди» → POST /api/wallet-tx).
+    # Секрет із заголовка X-Token; порожньо = ендпоінт завжди відповідає 403.
+    WALLET_WEBHOOK_SECRET: str = ""
+    # Telegram ID власника, на якого записуються витрати з Wallet.
+    WALLET_OWNER_TG_ID: str = ""
+
     # Окремий бот-фінансовий асистент (Money Deck Advisor)
     ADVISOR_BOT_TOKEN: str = ""
     # Базовий URL бекенд-API (Advisor виконує дії через нього).
