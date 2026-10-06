@@ -71,5 +71,6 @@ async def cmd_help(message: Message) -> None:
         "<b>Команди:</b>\n"
         "/start — головне меню\n"
         "/menu — відкрити меню\n"
+        "/cards — привʼязки карток Apple Wallet\n"
         "/help — ця довідка",
     )

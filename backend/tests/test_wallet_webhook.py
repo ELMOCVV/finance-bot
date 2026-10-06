@@ -9,6 +9,7 @@ from app.database import AsyncSessionLocal
 from app.main import app
 from app.models import User, Account, Category, Transaction
 from app.services import transaction_service
+from conftest import wipe_db
 
 SECRET = "test-secret"
 OWNER_TG_ID = 777000111
@@ -34,11 +35,8 @@ def setup(client, monkeypatch):
 
 
 async def _reset_db():
+    await wipe_db()
     async with AsyncSessionLocal() as db:
-        for model in (Transaction, Category, Account, User):
-            for obj in (await db.execute(select(model))).scalars().all():
-                await db.delete(obj)
-        await db.flush()
         user = User(telegram_id=OWNER_TG_ID, first_name="Owner")
         db.add(user)
         await db.flush()

@@ -29,6 +29,8 @@ class Transaction(Base):
     # Продавець і назва картки (Apple Wallet webhook)
     merchant: Mapped[str | None] = mapped_column(String(128), nullable=True)
     card: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # confirmed | pending — витрати з Wallet чекають підтвердження в боті
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="confirmed")
 
     # Зв'язки
     user: Mapped["User"] = relationship("User", back_populates="transactions")

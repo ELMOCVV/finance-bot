@@ -45,6 +45,8 @@ _PG_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_transactions_external_id ON transactions (external_id)",
     "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS merchant VARCHAR(128)",
     "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS card     VARCHAR(64)",
+    "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status   VARCHAR(16) DEFAULT 'confirmed' NOT NULL",
+    "UPDATE transactions SET status = 'confirmed' WHERE status IS NULL",
     # debts ─────────────────────────────────────────────────────────
     "ALTER TABLE debts ADD COLUMN IF NOT EXISTS currency          VARCHAR(10) DEFAULT 'UAH' NOT NULL",
     "ALTER TABLE debts ADD COLUMN IF NOT EXISTS next_payment_date DATE",
@@ -66,6 +68,7 @@ _PG_MIGRATIONS = [
 _SQLITE_MIGRATIONS = [
     "ALTER TABLE transactions ADD COLUMN merchant VARCHAR(128)",
     "ALTER TABLE transactions ADD COLUMN card VARCHAR(64)",
+    "ALTER TABLE transactions ADD COLUMN status VARCHAR(16) DEFAULT 'confirmed' NOT NULL",
 ]
 
 

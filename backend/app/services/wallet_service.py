@@ -1,8 +1,9 @@
 """Apple Wallet (iOS «Команди») → витрата.
 
-Парсинг суми з текстом валюти, підбір категорії за словником ключових слів
-(app/services/wallet_category_keywords.py), вибір рахунку та дедуплікація.
-Сам запис транзакції — через спільний create_transaction_record.
+Парсинг суми з текстом валюти, очистка назви картки, підбір категорії
+(запамʼятовані продавці → словник ключових слів → «Інше»), вибір рахунку
+(привʼязка картки → підказка за ключовими словами → рахунок за замовчуванням)
+та дедуплікація. Сам запис транзакції — через спільний create_transaction_record.
 """
 import re
 from datetime import datetime, timedelta
@@ -11,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Account, Category, Transaction
+from app.models import Account, Category, Transaction, MerchantCategory, WalletCard, WalletPending
 from app.services.wallet_category_keywords import CATEGORY_RULES, FALLBACK_CATEGORY_NAMES
 
 WALLET_SOURCE = "wallet"
@@ -73,13 +74,34 @@ def parse_wallet_amount(raw: str) -> tuple[Decimal, str]:
     return amount, currency
 
 
+def clean_card(card: str | None, merchant: str | None) -> str | None:
+    """iOS склеює назву картки з продавцем: "monobankYidalniaYidalnia" → "monobank"."""
+    if not card:
+        return None
+    if merchant:
+        card = re.sub(re.escape(merchant), "", card, flags=re.IGNORECASE)
+    card = card.strip()
+    return card or None
+
+
+def normalize_key(value: str, max_len: int = 64) -> str:
+    """Ключ для довідників: нижній регістр, уніфіковані апострофи й пробіли."""
+    return re.sub(r"\s+", " ", _norm(value))[:max_len]
+
+
 def _norm(s: str) -> str:
     # Уніфікуємо апострофи (', ʼ, ’) — назви на кшталт «Здоров'я» пишуть по-різному
     return re.sub(r"[ʼ’`]", "'", s).strip().lower()
 
 
-def pick_category(merchant: str, categories: list[Category]) -> Category | None:
-    """Категорія за ключовими словами продавця → fallback «Інше» → None."""
+def pick_category(
+    merchant: str, categories: list[Category], remembered_id: int | None = None,
+) -> Category | None:
+    """Запамʼятована для продавця категорія → ключові слова → fallback «Інше» → None."""
+    if remembered_id is not None:
+        remembered = next((c for c in categories if c.id == remembered_id), None)
+        if remembered:
+            return remembered
     by_name = {_norm(c.name): c for c in categories}
     merchant_n = _norm(merchant or "")
 
@@ -131,3 +153,80 @@ async def find_recent_duplicate(
         .limit(1)
     )
     return res.scalar_one_or_none()
+
+
+async def find_recent_pending_duplicate(
+    db: AsyncSession, user_id: int, amount: float, merchant: str | None, card: str | None,
+) -> WalletPending | None:
+    """Те саме, що find_recent_duplicate, але для відкладених витрат (немає рахунків)."""
+    since = datetime.utcnow() - DEDUP_WINDOW
+    res = await db.execute(
+        select(WalletPending)
+        .where(
+            and_(
+                WalletPending.user_id == user_id,
+                WalletPending.amount == amount,
+                WalletPending.merchant.is_(None) if merchant is None else WalletPending.merchant == merchant,
+                WalletPending.card.is_(None) if card is None else WalletPending.card == card,
+                WalletPending.created_at >= since,
+            )
+        )
+        .limit(1)
+    )
+    return res.scalar_one_or_none()
+
+
+# ── Запамʼятовані категорії продавців ─────────────────────────────────────────
+
+async def get_remembered_category_id(db: AsyncSession, user_id: int, merchant: str | None) -> int | None:
+    if not merchant:
+        return None
+    res = await db.execute(
+        select(MerchantCategory.category_id).where(
+            and_(MerchantCategory.user_id == user_id,
+                 MerchantCategory.merchant_key == normalize_key(merchant, 128))
+        )
+    )
+    return res.scalar_one_or_none()
+
+
+async def remember_merchant_category(db: AsyncSession, user_id: int, merchant: str | None, category_id: int) -> None:
+    if not merchant:
+        return
+    key = normalize_key(merchant, 128)
+    res = await db.execute(
+        select(MerchantCategory).where(
+            and_(MerchantCategory.user_id == user_id, MerchantCategory.merchant_key == key)
+        )
+    )
+    row = res.scalar_one_or_none()
+    if row:
+        row.category_id = category_id
+    else:
+        db.add(MerchantCategory(user_id=user_id, merchant_key=key, category_id=category_id))
+    await db.flush()
+
+
+# ── Привʼязки карток до рахунків ──────────────────────────────────────────────
+
+async def get_card_binding(db: AsyncSession, user_id: int, card: str | None) -> WalletCard | None:
+    if not card:
+        return None
+    res = await db.execute(
+        select(WalletCard).where(
+            and_(WalletCard.user_id == user_id, WalletCard.card_key == normalize_key(card))
+        )
+    )
+    return res.scalar_one_or_none()
+
+
+async def bind_card(db: AsyncSession, user_id: int, card: str, account_id: int) -> WalletCard:
+    binding = await get_card_binding(db, user_id, card)
+    if binding:
+        binding.account_id = account_id
+        binding.card_name = card[:64]
+    else:
+        binding = WalletCard(user_id=user_id, card_name=card[:64], card_key=normalize_key(card), account_id=account_id)
+        db.add(binding)
+    await db.flush()
+    return binding

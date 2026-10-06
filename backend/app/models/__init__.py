@@ -11,6 +11,7 @@ from app.models.subscription import Subscription
 from app.models.chat_history import ChatHistory
 from app.models.bank_connection import BankConnection
 from app.models.bank_card import BankCard
+from app.models.wallet import MerchantCategory, WalletCard, WalletPending
 
 __all__ = [
     "User",
@@ -26,4 +27,7 @@ __all__ = [
     "ChatHistory",
     "BankConnection",
     "BankCard",
+    "MerchantCategory",
+    "WalletCard",
+    "WalletPending",
 ]

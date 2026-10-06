@@ -85,3 +85,8 @@ class ConnectMonobank(StatesGroup):
     waiting_token = State()
     selecting_cards = State()
     selecting_period = State()
+
+
+class WalletNewAccount(StatesGroup):
+    waiting_name = State()
+    waiting_balance = State()

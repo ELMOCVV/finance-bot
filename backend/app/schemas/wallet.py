@@ -25,4 +25,6 @@ class WalletTxIn(BaseModel):
 
 class WalletTxOut(BaseModel):
     ok: bool = True
-    id: int
+    id: Optional[int] = None
+    # Задано, коли витрату відкладено (у користувача ще немає рахунків)
+    pending_id: Optional[int] = None
