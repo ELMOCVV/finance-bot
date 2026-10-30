@@ -15,7 +15,7 @@ from app.database import AsyncSessionLocal
 from app.main import app
 from app.models import User, Account, Category, Budget, Transaction, MerchantCategory, WalletCard, WalletPending
 from app.services import transaction_service, wallet_notify
-from app.services.wallet_service import clean_card
+from app.services.wallet_service import clean_card, split_by_category
 from bot.handlers import wallet as wh
 from conftest import wipe_db
 
@@ -168,6 +168,10 @@ def press(client, fake_bot, data, user_id=OWNER, state=None, message=None):
         client.portal.call(wh.wallet_pending_new_account, cb, db_user, st)
     elif data.startswith("wna:"):
         client.portal.call(wh.wallet_new_account_buttons, cb, db_user, st)
+    elif data.startswith("wnote:"):
+        client.portal.call(wh.wallet_note_buttons, cb, db_user, st)
+    elif data.startswith("wrc:"):
+        client.portal.call(wh.wallet_receipt_buttons, cb, db_user, st)
     elif data.startswith("wcard:"):
         client.portal.call(wh.wallet_cards_reset, cb, db_user)
     return cb
@@ -216,6 +220,7 @@ def test_message_sent_after_save(client, fake_bot):
     assert "не привʼязана" not in msg["text"]            # картку вже привʼязано
     assert buttons(msg["markup"]) == [
         ("✅ Вірно", f"wtx:ok:{tx.id}"), ("📂 Категорія", f"wtx:cat:{tx.id}"), ("🗑 Видалити", f"wtx:del:{tx.id}"),
+        ("💬 Коментар", f"wtx:note:{tx.id}"), ("🧾 Чек", f"wtx:rcpt:{tx.id}"),
     ]
 
 
@@ -258,7 +263,8 @@ def test_confirm_button(client, fake_bot):
     assert q(client, lambda db: db.get(Transaction, tx_id)).status == "confirmed"
     (edit,) = cb.message.edits
     assert "✅ Підтверджено" in edit["text"]
-    assert buttons(edit["markup"]) == []
+    # Після підтвердження лишаються тільки коментар і чек
+    assert buttons(edit["markup"]) == [("💬 Коментар", f"wtx:note:{tx_id}"), ("🧾 Чек", f"wtx:rcpt:{tx_id}")]
 
 
 def test_category_button_recalculates_budgets_and_is_remembered(client, fake_bot):
@@ -324,7 +330,7 @@ def test_first_spend_with_new_card_asks_for_account(client, fake_bot):
     (msg,) = fake_bot.sent
     assert "Картка «VST Bank» ще не привʼязана до рахунку" in msg["text"]
     btns = buttons(msg["markup"])
-    assert btns[3:] == [
+    assert btns[5:] == [
         ("⭐ Monobank (підказка)", f"wtx:bind:{tx_id}:{accs['Monobank'].id}"),
         ("Готівка", f"wtx:bind:{tx_id}:{accs['Готівка'].id}"),
         ("➕ Новий рахунок", f"wtx:new:{tx_id}"),
@@ -336,7 +342,7 @@ def test_keyword_suggestion_goes_first(client, fake_bot):
     tx_id = post(client, YID).json()["id"]
     accs = q(client, _accounts)
     assert q(client, lambda db: db.get(Transaction, tx_id)).account_id == accs["Monobank"].id
-    assert buttons(fake_bot.sent[0]["markup"])[3][0] == "⭐ Monobank (підказка)"
+    assert buttons(fake_bot.sent[0]["markup"])[5][0] == "⭐ Monobank (підказка)"
 
 
 def test_bind_to_existing_account_moves_balance(client, fake_bot):
@@ -507,3 +513,185 @@ def test_dispatcher_routes_wallet_updates(client, fake_bot):
     calls.clear()
     feed({"update_id": 2, "message": {"message_id": 11, "date": 0, "chat": chat, "from": user, "text": "/cards"}})
     assert any("monobank → Monobank" in getattr(m, "text", "") for m in calls)
+
+
+# ── 💬 Коментар ───────────────────────────────────────────────────────────────
+
+def test_note_is_saved_shown_and_cleared(client, fake_bot, state):
+    seed(client)
+    q(client, _bind_monobank)
+    tx_id = post(client, YID).json()["id"]
+    host = FakeMessage(fake_bot, message_id=555)
+
+    press(client, fake_bot, f"wtx:note:{tx_id}", state=state, message=host)
+    assert "Напиши коментар" in host.edits[-1]["text"]
+    assert buttons(host.edits[-1]["markup"]) == [("❌ Скасувати", "wnote:cancel")]
+
+    db_user = q(client, _user)
+    client.portal.call(wh.wallet_note_text, FakeMessage(fake_bot, text="  обід з Антоном "), db_user, state)
+    tx = q(client, lambda db: db.get(Transaction, tx_id))
+    assert tx.description == "Yidalnia — обід з Антоном" and tx.merchant == "Yidalnia"
+    assert tx.status == "pending"                                   # коментар не підтверджує
+    assert "💬 обід з Антоном" in fake_bot.edited[-1]["text"] and fake_bot.edited[-1]["message_id"] == 555
+    assert client.portal.call(state.get_state) is None
+
+    press(client, fake_bot, f"wtx:note:{tx_id}", state=state, message=host)
+    assert ("🗑 Прибрати коментар", "wnote:clear") in buttons(host.edits[-1]["markup"])
+    press(client, fake_bot, "wnote:clear", state=state, message=host)
+    assert q(client, lambda db: db.get(Transaction, tx_id)).description == "Yidalnia"
+    assert "💬" not in fake_bot.edited[-1]["text"].split("\n")[1]
+
+
+def test_note_cancel_keeps_description(client, fake_bot, state):
+    seed(client)
+    tx_id = post(client, YID).json()["id"]
+    press(client, fake_bot, f"wtx:note:{tx_id}", state=state)
+    press(client, fake_bot, "wnote:cancel", state=state)
+    assert q(client, lambda db: db.get(Transaction, tx_id)).description == "Yidalnia"
+    assert client.portal.call(state.get_state) is None
+
+
+# ── 🧾 Чек ────────────────────────────────────────────────────────────────────
+
+def _cats(categories):
+    return [SimpleNamespace(id=i, name=n) for i, n in categories]
+
+
+def test_split_by_category_scales_to_spend_and_groups():
+    cats = _cats([(1, "Їжа"), (2, "Тютюн")])
+    items = [
+        {"name": "Хліб", "amount": 40, "category_id": 1},
+        {"name": "Молоко", "amount": 60, "category_id": 1},
+        {"name": "Marlboro", "amount": 100, "category_id": None, "new_category": "тютюн"},  # = наявна «Тютюн»
+        {"name": "Пакет", "amount": 0, "category_id": 1},                                  # порожня — відкинути
+    ]
+    groups = split_by_category(items, 190.0, cats)                   # знижка 10 ₴ на чек
+    assert [(g["category_id"], g["new_category"], g["amount"]) for g in groups] == [(1, None, 95.0), (2, None, 95.0)]
+    assert groups[0]["names"] == ["Хліб", "Молоко"]
+    assert sum(g["amount"] for g in groups) == pytest.approx(190.0)
+
+
+def test_split_by_category_rounding_new_and_unknown():
+    cats = _cats([(1, "Їжа")])
+    items = [
+        {"name": "a", "amount": 1, "category_id": 1},
+        {"name": "b", "amount": 1, "category_id": 99},                # невідома → без категорії
+        {"name": "c", "amount": 1, "new_category": "Алкоголь"},
+    ]
+    groups = split_by_category(items, 100.0, cats)
+    assert sum(g["amount"] for g in groups) == pytest.approx(100.0)
+    assert {(g["category_id"], g["new_category"]) for g in groups} == {(1, None), (None, None), (None, "Алкоголь")}
+    assert split_by_category([{"name": "x", "amount": "abc"}], 10.0, cats) == []
+
+
+RECEIPT = {"items": [
+    {"name": "Хліб", "amount": 50, "category_id": None, "new_category": None},
+    {"name": "Marlboro", "amount": 150, "category_id": None, "new_category": "Тютюн"},
+], "total": 200}
+
+
+@pytest.fixture
+def receipt(monkeypatch):
+    calls = []
+
+    async def fake_download(message):
+        return ("aW1n", "image/jpeg") if message.text is None else None
+
+    async def fake_parse(image_b64, categories, media_type="image/jpeg"):
+        calls.append(categories)
+        food = next(c["id"] for c in categories if c["name"] == "Їжа")
+        if "items" not in result["value"]:
+            return result["value"]
+        items = [dict(i) for i in result["value"]["items"]]
+        for i in items:
+            if i["name"] in ("Хліб", "Сир"):
+                i["category_id"] = food
+        return {**result["value"], "items": items}
+
+    result = {"value": RECEIPT}
+    from app.services.claude_service import claude_service
+    monkeypatch.setattr(wh, "_download_image", fake_download)
+    monkeypatch.setattr(claude_service, "parse_receipt_items", fake_parse)
+    return SimpleNamespace(calls=calls, result=result)
+
+
+def _send_receipt(client, fake_bot, state, tx_id):
+    host = FakeMessage(fake_bot, message_id=555)
+    press(client, fake_bot, f"wtx:rcpt:{tx_id}", state=state, message=host)
+    assert "Надішли фото чека" in host.edits[-1]["text"]
+    client.portal.call(wh.wallet_receipt_photo, FakeMessage(fake_bot), q(client, _user), state)
+    return host
+
+
+async def _txs(db):
+    return (await db.execute(select(Transaction).order_by(Transaction.id))).scalars().all()
+
+
+def test_receipt_splits_spend_without_remembering_merchant(client, fake_bot, state, receipt):
+    seed(client)
+    q(client, _bind_monobank)
+    tx_id = post(client, {"amount": "180 ₴", "merchant": "Сільпо", "card": "monobank"}).json()["id"]
+    assert q(client, _budgets) == {"Їжа": 180, "Інше": 0}               # «сільпо» → Їжа за словником
+
+    _send_receipt(client, fake_bot, state, tx_id)
+    preview = fake_bot.edited[-1]["text"]
+    assert "Чек розпізнано" in preview and "🆕 Тютюн" in preview and "135,00 ₴" in preview
+    assert ("✅ Розбити", "wrc:ok") in buttons(fake_bot.edited[-1]["markup"])
+    assert q(client, lambda db: db.get(Transaction, tx_id)) is not None   # ще нічого не змінено
+
+    press(client, fake_bot, "wrc:ok", state=state)
+    txs = q(client, _txs)
+    assert [(t.amount, t.description, t.status, t.merchant, t.card) for t in txs] == [
+        (135.0, "Сільпо — Marlboro", "confirmed", "Сільпо", "monobank"),
+        (45.0, "Сільпо — Хліб", "confirmed", "Сільпо", "monobank"),
+    ]
+    assert q(client, _accounts)["Monobank"].balance == pytest.approx(1000 - 180)
+    budgets = q(client, _budgets)
+    assert budgets["Їжа"] == pytest.approx(45.0)
+    tobacco = q(client, lambda db: _cat_id(db, "Тютюн"))
+    assert txs[0].category_id == tobacco
+    assert q(client, lambda db: _count(db, MerchantCategory)) == 0
+    final = fake_bot.edited[-1]
+    assert "Розбито на 2 витрати" in final["text"] and final["message_id"] == 555
+    assert client.portal.call(state.get_state) is None
+
+
+def test_receipt_single_category_changes_in_place(client, fake_bot, state, receipt):
+    seed(client)
+    q(client, _bind_monobank)
+    receipt.result["value"] = {"items": [{"name": "Хліб", "amount": 30}, {"name": "Сир", "amount": 70}]}
+    tx_id = post(client, YID).json()["id"]
+    _send_receipt(client, fake_bot, state, tx_id)
+    assert ("✅ Застосувати", "wrc:ok") in buttons(fake_bot.edited[-1]["markup"])
+    press(client, fake_bot, "wrc:ok", state=state)
+    tx = q(client, lambda db: db.get(Transaction, tx_id))
+    food = q(client, lambda db: _cat_id(db, "Їжа"))
+    assert tx.amount == pytest.approx(112.6) and tx.category_id == food and tx.status == "confirmed"
+    assert tx.description == "Yidalnia — Хліб, Сир"
+    assert q(client, _budgets) == {"Їжа": pytest.approx(112.6), "Інше": 0}
+    assert q(client, lambda db: _count(db, MerchantCategory)) == 0
+
+
+def test_receipt_cancel_and_parse_error_change_nothing(client, fake_bot, state, receipt):
+    seed(client)
+    tx_id = post(client, YID).json()["id"]
+    _send_receipt(client, fake_bot, state, tx_id)
+    press(client, fake_bot, "wrc:cancel", state=state)
+    assert len(q(client, _txs)) == 1 and q(client, lambda db: db.get(Transaction, tx_id)).description == "Yidalnia"
+    assert client.portal.call(state.get_state) is None
+
+    receipt.result["value"] = {"error": "not a receipt"}
+    _send_receipt(client, fake_bot, state, tx_id)
+    assert "Не вдалось розпізнати чек" in fake_bot.edited[-1]["text"]
+    assert len(q(client, _txs)) == 1
+    assert client.portal.call(state.get_state) is None
+
+
+def test_receipt_text_instead_of_photo_asks_again(client, fake_bot, state, receipt):
+    seed(client)
+    tx_id = post(client, YID).json()["id"]
+    press(client, fake_bot, f"wtx:rcpt:{tx_id}", state=state)
+    msg = FakeMessage(fake_bot, text="ось")
+    client.portal.call(wh.wallet_receipt_photo, msg, q(client, _user), state)
+    assert "Надішли саме фото" in msg.answers[-1]
+    assert client.portal.call(state.get_state) == "WalletReceipt:waiting_photo"

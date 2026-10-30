@@ -230,3 +230,55 @@ async def bind_card(db: AsyncSession, user_id: int, card: str, account_id: int) 
         db.add(binding)
     await db.flush()
     return binding
+
+
+# ── Чек: розбивка витрати за категоріями ─────────────────────────────────────
+
+def split_by_category(
+    items: list[dict], total: float, categories: list[Category],
+) -> list[dict]:
+    """Групує позиції чека за категоріями й підганяє суми під суму витрати.
+
+    items — [{"name", "amount", "category_id" | None, "new_category" | None}] від Claude.
+    Невідомий category_id і нова назва, що збігається з наявною категорією, зводяться
+    до наявної; позиції без категорії — група з category_id=None (лишиться категорія витрати).
+    Суми масштабуються пропорційно (знижки/округлення в чеку), залишок копійок —
+    у найбільшу групу. Повертає [{"category_id", "new_category", "amount", "names"}],
+    найбільша група першою; [] якщо в чеку немає позицій з додатною сумою.
+    """
+    by_id = {c.id: c for c in categories}
+    by_name = {_norm(c.name): c for c in categories}
+    groups: dict[tuple, dict] = {}
+    for item in items:
+        try:
+            amount = float(item.get("amount") or 0)
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        cat = by_id.get(item.get("category_id")) if item.get("category_id") is not None else None
+        new_name = (item.get("new_category") or "").strip()[:128] or None
+        if not cat and new_name:
+            cat = by_name.get(_norm(new_name))
+        if cat:
+            key, new_name = ("id", cat.id), None
+        elif new_name:
+            key = ("new", _norm(new_name))
+        else:
+            key = ("none",)
+        g = groups.setdefault(key, {
+            "category_id": cat.id if cat else None, "new_category": new_name, "amount": 0.0, "names": [],
+        })
+        g["amount"] += amount
+        name = (item.get("name") or "").strip()
+        if name:
+            g["names"].append(name)
+
+    receipt_sum = sum(g["amount"] for g in groups.values())
+    if receipt_sum <= 0:
+        return []
+    result = sorted(groups.values(), key=lambda g: g["amount"], reverse=True)
+    for g in result:
+        g["amount"] = round(g["amount"] * total / receipt_sum, 2)
+    result[0]["amount"] = round(result[0]["amount"] + round(total - sum(g["amount"] for g in result), 2), 2)
+    return [g for g in result if g["amount"] > 0]

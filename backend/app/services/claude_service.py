@@ -31,7 +31,23 @@ PARSE_TRANSACTION_PROMPT = """Ти — фінансовий асистент. П
 Якщо не вдалось розпарсити — поверни {"error": "причина"}.
 """
 
-FINANCE_ASSISTANT_PROMPT = """Ти — розумний фінансовий асистент застосунку FinanceAI Bot.
+# Позиції чека з розкладом за категоріями (розбивка витрати з Wallet)
+PARSE_RECEIPT_ITEMS_PROMPT = """Ти — фінансовий асистент. На фото — касовий чек.
+Випиши кожну куплену позицію з її підсумковою ціною (з урахуванням кількості та знижки на позицію)
+і віднеси до однієї з категорій користувача (їх список у повідомленні).
+Якщо жодна категорія не підходить (наприклад, тютюн чи алкоголь, а такої категорії немає) —
+запропонуй коротку нову назву категорії українською в "new_category", а "category_id" постав null.
+
+Відповідай ВИКЛЮЧНО валідним JSON без жодного тексту навколо:
+{"items": [{"name": "Хліб", "amount": 32.5, "category_id": 3, "new_category": null},
+           {"name": "Marlboro", "amount": 120, "category_id": null, "new_category": "Тютюн"}],
+ "total": 152.5}
+
+"total" — підсумок до сплати з чека. Якщо на фото не чек або його не прочитати —
+поверни {"error": "причина"}.
+"""
+
+FINANCE_ASSISTANT_PROMPT ="""Ти — розумний фінансовий асистент застосунку FinanceAI Bot.
 Відповідай лаконічно, по суті, українською мовою.
 Допомагай аналізувати витрати, планувати бюджет, давати поради щодо заощаджень.
 """
@@ -99,6 +115,47 @@ class ClaudeService:
             return json.loads(raw)
         except Exception as e:
             logger.error("Помилка розпізнавання фото: %s", e)
+            return {"error": str(e)}
+
+    async def parse_receipt_items(
+        self, image_base64: str, categories: list[dict], media_type: str = "image/jpeg",
+    ) -> dict:
+        """Розпізнає позиції чека й відносить кожну до категорії користувача.
+
+        categories — [{"id": int, "name": str}] витратних категорій.
+        Повертає {"items": [{"name", "amount", "category_id", "new_category"}], "total"}
+        або {"error": "..."}.
+        """
+        cats_str = "\n".join(f'id={c["id"]}: {c["name"]}' for c in categories) or "(немає)"
+        try:
+            message = await self.client.messages.create(
+                model=self.model,
+                max_tokens=2048,
+                system=PARSE_RECEIPT_ITEMS_PROMPT,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {"type": "base64", "media_type": media_type, "data": image_base64},
+                            },
+                            {"type": "text", "text": f"Категорії користувача:\n{cats_str}"},
+                        ],
+                    }
+                ],
+            )
+            raw = message.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict) or ("items" not in parsed and "error" not in parsed):
+                return {"error": "Неочікувана відповідь"}
+            return parsed
+        except Exception as e:
+            logger.error("Помилка розпізнавання позицій чека: %s", e)
             return {"error": str(e)}
 
     async def answer_finance_question(

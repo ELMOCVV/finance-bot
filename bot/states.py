@@ -90,3 +90,12 @@ class ConnectMonobank(StatesGroup):
 class WalletNewAccount(StatesGroup):
     waiting_name = State()
     waiting_balance = State()
+
+
+class WalletNote(StatesGroup):
+    waiting_text = State()
+
+
+class WalletReceipt(StatesGroup):
+    waiting_photo = State()
+    confirming = State()
