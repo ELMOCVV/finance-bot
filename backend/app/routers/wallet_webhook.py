@@ -8,6 +8,7 @@ POST /api/wallet-tx — автоматизація iOS «Команди» (тр�
 Якщо в користувача ще немає рахунків — дані зберігаються як WalletPending,
 а бот пропонує створити рахунок.
 """
+import asyncio
 import json
 import logging
 import secrets
@@ -24,14 +25,33 @@ from app.schemas.wallet import WalletTxIn, WalletTxOut
 from app.services.transaction_service import create_transaction_record
 from app.services.wallet_notify import notify_in_background
 from app.services.wallet_service import (
-    WALLET_SOURCE, parse_wallet_amount, pick_category, pick_account, find_recent_duplicate,
+    WALLET_SOURCE, parse_wallet_amount, match_known_category, fallback_category, pick_account,
+    find_recent_duplicate,
     find_recent_pending_duplicate, clean_card, get_card_binding, get_remembered_category_id,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["wallet"])
+AI_HINT_TIMEOUT = 5.0  # с; вебхук не має чекати довго
 
 _MAX_LOGGED_BODY = 2000
+
+
+async def _ai_category(merchant: str | None, cats: list[Category]) -> Category | None:
+    """Підказка Claude Haiku за назвою продавця, якщо ні памʼять, ні словник не допомогли.
+    Будь-яка помилка / таймаут / «нова категорія» → None (далі «Інше»)."""
+    if not merchant or not cats or not settings.ANTHROPIC_API_KEY:
+        return None
+    try:
+        from bot.services.category_matcher import match_category
+        res = await asyncio.wait_for(match_category(
+            description=merchant, hint="", tx_type="expense",
+            user_categories=[{"id": c.id, "name": c.name} for c in cats],
+        ), timeout=AI_HINT_TIMEOUT)
+    except Exception as e:
+        logger.info("Wallet webhook: AI category hint skipped (%s)", e.__class__.__name__)
+        return None
+    return next((c for c in cats if c.id == res.get("matched_id")), None)
 
 
 def _check_token(token: str | None) -> None:
@@ -104,7 +124,12 @@ async def receive_wallet_tx(request: Request, db: AsyncSession = Depends(get_db)
         select(Category).where(and_(Category.user_id == user.id, Category.type == "expense"))
     )
     remembered_id = await get_remembered_category_id(db, user.id, merchant)
-    category = pick_category(merchant, cats_res.scalars().all(), remembered_id)
+    cats = cats_res.scalars().all()
+    category = (
+        match_known_category(merchant, cats, remembered_id)
+        or await _ai_category(merchant, cats)
+        or fallback_category(cats)
+    )
 
     tx = await create_transaction_record(
         db,

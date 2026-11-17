@@ -94,10 +94,10 @@ def _norm(s: str) -> str:
     return re.sub(r"[ʼ’`]", "'", s).strip().lower()
 
 
-def pick_category(
+def match_known_category(
     merchant: str, categories: list[Category], remembered_id: int | None = None,
 ) -> Category | None:
-    """Запамʼятована для продавця категорія → ключові слова → fallback «Інше» → None."""
+    """Запамʼятована для продавця категорія → ключові слова → None (без fallback)."""
     if remembered_id is not None:
         remembered = next((c for c in categories if c.id == remembered_id), None)
         if remembered:
@@ -111,11 +111,22 @@ def pick_category(
                 for name in rule["categories"]:
                     if _norm(name) in by_name:
                         return by_name[_norm(name)]
+    return None
 
+
+def fallback_category(categories: list[Category]) -> Category | None:
+    by_name = {_norm(c.name): c for c in categories}
     for name in FALLBACK_CATEGORY_NAMES:
         if _norm(name) in by_name:
             return by_name[_norm(name)]
     return None
+
+
+def pick_category(
+    merchant: str, categories: list[Category], remembered_id: int | None = None,
+) -> Category | None:
+    """Запамʼятована для продавця категорія → ключові слова → fallback «Інше» → None."""
+    return match_known_category(merchant, categories, remembered_id) or fallback_category(categories)
 
 
 def pick_account(card: str, accounts: list[Account]) -> Account | None:
@@ -243,11 +254,14 @@ def split_by_category(
     Невідомий category_id і нова назва, що збігається з наявною категорією, зводяться
     до наявної; позиції без категорії — група з category_id=None (лишиться категорія витрати).
     Суми масштабуються пропорційно (знижки/округлення в чеку), залишок копійок —
-    у найбільшу групу. Повертає [{"category_id", "new_category", "amount", "names"}],
+    у найбільшу групу. Позиції без суми / з "estimated" ділять залишок після точних сум
+    (див. _fill_estimates). Повертає [{"category_id", "new_category", "amount", "names",
+    "estimated"}],
     найбільша група першою; [] якщо в чеку немає позицій з додатною сумою.
     """
     by_id = {c.id: c for c in categories}
     by_name = {_norm(c.name): c for c in categories}
+    items = _fill_estimates(items, total)
     groups: dict[tuple, dict] = {}
     for item in items:
         try:
@@ -268,8 +282,10 @@ def split_by_category(
             key = ("none",)
         g = groups.setdefault(key, {
             "category_id": cat.id if cat else None, "new_category": new_name, "amount": 0.0, "names": [],
+            "estimated": False,
         })
         g["amount"] += amount
+        g["estimated"] = g["estimated"] or bool(item.get("estimated"))
         name = (item.get("name") or "").strip()
         if name:
             g["names"].append(name)
@@ -282,3 +298,31 @@ def split_by_category(
         g["amount"] = round(g["amount"] * total / receipt_sum, 2)
     result[0]["amount"] = round(result[0]["amount"] + round(total - sum(g["amount"] for g in result), 2), 2)
     return [g for g in result if g["amount"] > 0]
+
+
+def _fill_estimates(items: list[dict], total: float) -> list[dict]:
+    """Точні суми лишаються як є (0 — безкоштовна позиція, далі відкидається); позиції
+    без суми (або з оцінкою Claude, "estimated") ділять залишок «сума витрати − точні
+    суми» пропорційно оцінкам (без оцінки — порівну).
+    Якщо залишку немає — оцінки лишаються як є (далі все масштабується до суми витрати)."""
+    def num(v) -> float | None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    rough = [k for k, i in enumerate(items) if num(i.get("amount")) is None or i.get("estimated")]
+    if not rough:
+        return items
+    exact_sum = sum(num(i.get("amount")) or 0 for k, i in enumerate(items) if k not in rough)
+    remainder = total - exact_sum
+    weights = {k: max(num(items[k].get("amount")) or 0, 0) or 1.0 for k in rough}
+    out = []
+    for k, i in enumerate(items):
+        if k in weights:
+            w = weights[k]
+            amount = remainder * w / sum(weights.values()) if remainder > 0 else w
+            out.append({**i, "amount": amount, "estimated": True})
+        else:
+            out.append(i)
+    return out

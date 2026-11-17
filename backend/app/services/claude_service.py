@@ -47,7 +47,24 @@ PARSE_RECEIPT_ITEMS_PROMPT = """Ти — фінансовий асистент. 
 поверни {"error": "причина"}.
 """
 
-FINANCE_ASSISTANT_PROMPT ="""Ти — розумний фінансовий асистент застосунку FinanceAI Bot.
+# Опис покупки текстом → позиції з категоріями (крок «Що купив?» для витрат з Wallet)
+PARSE_PURCHASE_TEXT_PROMPT = """Ти — фінансовий асистент. Користувач описав, що купив, однією оплатою.
+Сума оплати й список його категорій — у повідомленні. Розбий опис на позиції й віднеси кожну
+до категорії за тим, ЩО куплено (не за магазином). Однотипні речі можна обʼєднати в одну позицію.
+Якщо ціну вказано — "amount": число, "estimated": false. Якщо ні — оціни типову ціну в Україні,
+"estimated": true (точні суми потім віднімаються від суми оплати, решта ділиться між оцінками).
+Якщо жодна категорія не підходить (наприклад, тютюн чи алкоголь, а такої немає) —
+"category_id": null і коротка нова назва українською в "new_category".
+Якщо в описі одна річ або все одного типу — одна позиція.
+
+Відповідай ВИКЛЮЧНО валідним JSON без жодного тексту навколо:
+{"items": [{"name": "хліб, молоко", "amount": 300, "estimated": false, "category_id": 3, "new_category": null},
+           {"name": "сигарети", "amount": 150, "estimated": false, "category_id": null, "new_category": "Тютюн"}]}
+
+Якщо це не опис покупки — поверни {"error": "причина"}.
+"""
+
+FINANCE_ASSISTANT_PROMPT = """Ти — розумний фінансовий асистент застосунку FinanceAI Bot.
 Відповідай лаконічно, по суті, українською мовою.
 Допомагай аналізувати витрати, планувати бюджет, давати поради щодо заощаджень.
 """
@@ -156,6 +173,34 @@ class ClaudeService:
             return parsed
         except Exception as e:
             logger.error("Помилка розпізнавання позицій чека: %s", e)
+            return {"error": str(e)}
+
+    async def parse_purchase_text(
+        self, text: str, total: float, currency: str, categories: list[dict],
+    ) -> dict:
+        """Опис покупки → {"items": [...]} як у parse_receipt_items, або {"error": ...}."""
+        cats_str = "\n".join(f'id={c["id"]}: {c["name"]}' for c in categories) or "(немає)"
+        try:
+            message = await self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                system=PARSE_PURCHASE_TEXT_PROMPT,
+                messages=[{
+                    "role": "user",
+                    "content": f"Сума оплати: {total} {currency}\nКатегорії користувача:\n{cats_str}\n\nОпис: {text}",
+                }],
+            )
+            raw = message.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict) or ("items" not in parsed and "error" not in parsed):
+                return {"error": "Неочікувана відповідь"}
+            return parsed
+        except Exception as e:
+            logger.error("Помилка розбору опису покупки: %s", e)
             return {"error": str(e)}
 
     async def answer_finance_question(

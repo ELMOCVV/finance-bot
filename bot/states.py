@@ -92,10 +92,6 @@ class WalletNewAccount(StatesGroup):
     waiting_balance = State()
 
 
-class WalletNote(StatesGroup):
-    waiting_text = State()
-
-
-class WalletReceipt(StatesGroup):
-    waiting_photo = State()
-    confirming = State()
+class WalletFlow(StatesGroup):
+    waiting_input = State()   # «що купив?» — текст або фото чека
+    confirming = State()      # розкладка на кілька категорій чекає «✅ Зберегти»

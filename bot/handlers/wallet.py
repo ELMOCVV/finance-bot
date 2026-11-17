@@ -1,16 +1,17 @@
-"""Підтвердження витрат з Apple Wallet у боті.
+"""Витрати з Apple Wallet у боті — покроково, з мінімумом натискань.
 
-Після POST /api/wallet-tx бекенд (у фоні) викликає send_wallet_tx_message —
-власник отримує повідомлення з кнопками:
-  ✅ Вірно      — status=confirmed, кнопки дій зникають;
-  📂 Категорія  — вибір категорії (перерахунок бюджетів + запамʼятовування
-                  «продавець → категорія»);
-  🗑 Видалити   — видалення з поверненням балансу й бюджету;
-  💬 Коментар   — необовʼязковий коментар (description = «продавець — коментар»);
-  🧾 Чек        — фото чека → Claude розкладає позиції за категоріями →
-                  витрата розбивається на кілька (запамʼятовування продавця не чіпаємо).
-Якщо картка ще не привʼязана до рахунку — блок вибору рахунку
-(підказаний автопідбором — першим) і «➕ Новий рахунок» (діалог назва → баланс).
+Після POST /api/wallet-tx бекенд (у фоні) викликає send_wallet_tx_message:
+  Крок 0 (лише нова картка) — куди відносити картку: рахунок або «➕ Новий рахунок»
+         (діалог назва → баланс).
+  Крок 1 — «Що купив?»: власник пише текст або надсилає фото чека, і Claude
+         розкладає позиції за категоріями (одна категорія — зберігаємо одразу,
+         кілька — розкладка + «✅ Зберегти»; витрата ділиться на кілька). Або
+         одним натиском обирає категорію: підказана (запамʼятована для продавця →
+         словник → Claude Haiku) — першою з ⭐; вибір запамʼятовується за продавцем.
+         Текст/чек продавця не запамʼятовують — категорію визначає, що куплено.
+  Підсумок — «✅ категорія — коментар» і «✏️ Змінити» (повернутися до кроку 1).
+Текст власника, поки витрата чекає на крок 1, вважається описом цієї витрати
+(FSM WalletFlow, привʼязано до останньої витрати).
 Якщо рахунків немає зовсім — send_wallet_pending_message пропонує створити
 рахунок тим самим діалогом і після цього записує відкладену витрату.
 
@@ -24,6 +25,7 @@ import logging
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select, and_
@@ -39,7 +41,7 @@ from app.services.wallet_service import (
     WALLET_SOURCE, bind_card, get_card_binding, get_remembered_category_id,
     pick_category, remember_merchant_category, split_by_category,
 )
-from bot.states import WalletNewAccount, WalletNote, WalletReceipt
+from bot.states import WalletFlow, WalletNewAccount
 from bot.utils.fsm_edit import HOST_MID_KEY
 
 logger = logging.getLogger(__name__)
@@ -92,37 +94,29 @@ def set_note(tx: Transaction, note: str | None) -> None:
         tx.description = tx.merchant
 
 
+async def _expense_categories(db, user_id: int) -> list[Category]:
+    return (await db.execute(
+        select(Category).where(and_(Category.user_id == user_id, Category.type == "expense"))
+        .order_by(Category.name)
+    )).scalars().all()
+
+
+def _cat_label(cat: Category | None) -> str:
+    return html.escape(f"{cat.icon or ''} {cat.name}".strip()) if cat else "Без категорії"
+
+
 async def build_tx_view(db, tx: Transaction) -> tuple[str, InlineKeyboardMarkup | None]:
-    """Текст і кнопки повідомлення про витрату з Wallet."""
+    """Повідомлення про витрату з Wallet — залежно від кроку.
+
+    Крок 0 (нова картка): вибір рахунку. Крок 1 (status=pending): «що купив?» +
+    сітка категорій, підказана — першою з ⭐. Підсумок (confirmed): категорія й «✏️ Змінити».
+    """
     account = await db.get(Account, tx.account_id)
-    category = await db.get(Category, tx.category_id) if tx.category_id else None
-    lines = [
-        _headline(tx.amount, tx.currency, tx.merchant),
-        f"Категорія: {html.escape(category.name) if category else 'Без категорії'}"
-        f" · Рахунок: {html.escape(account.name) if account else '—'}",
-    ]
-    note = get_note(tx)
-    if note:
-        lines.append(f"💬 {html.escape(note)}")
+    acc_name = html.escape(account.name) if account else "—"
+    headline = _headline(tx.amount, tx.currency, tx.merchant)
     b = InlineKeyboardBuilder()
-    if tx.status == "confirmed":
-        lines.append("\n✅ Підтверджено")
-    else:
-        b.row(
-            InlineKeyboardButton(text="✅ Вірно", callback_data=f"wtx:ok:{tx.id}"),
-            InlineKeyboardButton(text="📂 Категорія", callback_data=f"wtx:cat:{tx.id}"),
-            InlineKeyboardButton(text="🗑 Видалити", callback_data=f"wtx:del:{tx.id}"),
-        )
-    b.row(
-        InlineKeyboardButton(text="💬 Коментар", callback_data=f"wtx:note:{tx.id}"),
-        InlineKeyboardButton(text="🧾 Чек", callback_data=f"wtx:rcpt:{tx.id}"),
-    )
 
     if tx.card and not await get_card_binding(db, tx.user_id, tx.card):
-        lines.append(
-            f"\n💳 Картка «{html.escape(tx.card)}» ще не привʼязана до рахунку. "
-            f"Куди відносити її витрати?"
-        )
         accs = (await db.execute(
             select(Account).where(Account.user_id == tx.user_id).order_by(Account.id)
         )).scalars().all()
@@ -132,9 +126,37 @@ async def build_tx_view(db, tx: Transaction) -> tuple[str, InlineKeyboardMarkup 
             label = f"⭐ {acc.name} (підказка)" if acc.id == tx.account_id else acc.name
             b.row(InlineKeyboardButton(text=label[:60], callback_data=f"wtx:bind:{tx.id}:{acc.id}"))
         b.row(InlineKeyboardButton(text="➕ Новий рахунок", callback_data=f"wtx:new:{tx.id}"))
+        b.row(InlineKeyboardButton(text="🗑 Видалити", callback_data=f"wtx:del:{tx.id}"))
+        text = (f"{headline}\n\n💳 Картка «{html.escape(tx.card)}» ще не привʼязана до рахунку. "
+                f"Куди відносити її витрати?")
+        return text, b.as_markup()
 
-    markup = b.as_markup() if b.export() else None
-    return "\n".join(lines), markup
+    category = await db.get(Category, tx.category_id) if tx.category_id else None
+    note = get_note(tx)
+
+    if tx.status == "confirmed":
+        lines = [f"{headline} · {acc_name}", f"✅ {_cat_label(category)}"]
+        if note:
+            lines[-1] += f" — {html.escape(note)}"
+        b.row(InlineKeyboardButton(text="✏️ Змінити", callback_data=f"wtx:edit:{tx.id}"))
+        return "\n".join(lines), b.as_markup()
+
+    cats = sorted(await _expense_categories(db, tx.user_id), key=lambda c: c.id != tx.category_id)
+    for c in cats:
+        star = "⭐ " if c.id == tx.category_id else ""
+        b.button(text=f"{star}{c.icon or ''} {c.name}".strip()[:40], callback_data=f"wtx:sc:{tx.id}:{c.id}")
+    b.adjust(2)
+    b.row(InlineKeyboardButton(text="🗑 Видалити", callback_data=f"wtx:del:{tx.id}"))
+    lines = [
+        f"{headline} · {acc_name}",
+        "",
+        "✍️ <b>Що купив?</b> Напиши (напр. «хліб, молоко 300, сигарети 150») "
+        "або надішли фото чека — розкладу по категоріях.",
+        "Або просто обери категорію:",
+    ]
+    if note:
+        lines.insert(1, f"💬 {html.escape(note)}")
+    return "\n".join(lines), b.as_markup()
 
 
 def _pending_view(p: WalletPending) -> tuple[str, InlineKeyboardMarkup]:
@@ -150,6 +172,29 @@ def _pending_view(p: WalletPending) -> tuple[str, InlineKeyboardMarkup]:
     return text, b.as_markup()
 
 
+# ── Очікування «що купив» (текст або фото) ───────────────────────────────────
+
+def _owner_state(bot, chat_id: int) -> FSMContext:
+    """FSM власника в чаті з ботом — той самий ключ, що формує Dispatcher."""
+    from bot.main import dp
+    return FSMContext(storage=dp.storage, key=StorageKey(bot_id=bot.id, chat_id=chat_id, user_id=chat_id))
+
+
+async def _await_input(state: FSMContext, tx: Transaction, host_mid: int | None) -> None:
+    """Крок 1: наступний текст або фото власника описує цю витрату.
+    Не-pending або ще не привʼязана картка — нічого не чекаємо."""
+    await state.clear()
+    if tx.status != "pending" or host_mid is None:
+        return
+    await state.set_state(WalletFlow.waiting_input)
+    await state.update_data(w_tx_id=tx.id, **{HOST_MID_KEY: host_mid})
+
+
+async def _release_if_current(state: FSMContext, tx_id: int) -> None:
+    if (await state.get_data()).get("w_tx_id") == tx_id:
+        await state.clear()
+
+
 # ── Надсилання (викликається з бекенду у фоні) ───────────────────────────────
 
 async def send_wallet_tx_message(chat_id: int, tx_id: int) -> None:
@@ -159,7 +204,15 @@ async def send_wallet_tx_message(chat_id: int, tx_id: int) -> None:
         if not tx:
             return
         text, markup = await build_tx_view(db, tx)
-    await bot.send_message(chat_id, text, reply_markup=markup)
+        bound = not tx.card or await get_card_binding(db, tx.user_id, tx.card) is not None
+    sent = await bot.send_message(chat_id, text, reply_markup=markup)
+    if not bound:
+        return
+    state = _owner_state(bot, chat_id)
+    current = await state.get_state()
+    # Не перебиваємо інший діалог (напр. створення рахунку) — тоді лише кнопки
+    if current is None or current.startswith(f"{WalletFlow.__name__}:"):
+        await _await_input(state, tx, sent.message_id)
 
 
 async def send_wallet_pending_message(chat_id: int, pending_id: int) -> None:
@@ -205,34 +258,8 @@ async def wallet_tx_action(callback: CallbackQuery, db_user: User, state: FSMCon
         if not tx:
             return
 
-        if action == "ok":
-            tx.status = "confirmed"
-            await db.commit()
-            await _show_tx(callback, db, tx)
-            await callback.answer("Підтверджено")
-
-        elif action == "back":
-            await _show_tx(callback, db, tx)
-            await callback.answer()
-
-        elif action == "cat":
-            cats = (await db.execute(
-                select(Category).where(and_(Category.user_id == db_user.id, Category.type == "expense"))
-                .order_by(Category.name)
-            )).scalars().all()
-            b = InlineKeyboardBuilder()
-            for c in cats:
-                mark = "• " if c.id == tx.category_id else ""
-                b.button(text=f"{mark}{c.icon or ''} {c.name}".strip()[:40], callback_data=f"wtx:sc:{tx.id}:{c.id}")
-            b.adjust(2)
-            b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"wtx:back:{tx.id}"))
-            await callback.message.edit_text(
-                f"{_headline(tx.amount, tx.currency, tx.merchant)}\n\n📂 Оберіть категорію:",
-                reply_markup=b.as_markup(),
-            )
-            await callback.answer()
-
-        elif action == "sc":
+        if action == "sc":
+            # Категорія одним натиском = готово; продавця запамʼятовуємо
             cat = (await db.execute(
                 select(Category).where(and_(Category.id == int(parts[3]), Category.user_id == db_user.id))
             )).scalar_one_or_none()
@@ -241,14 +268,24 @@ async def wallet_tx_action(callback: CallbackQuery, db_user: User, state: FSMCon
                 return
             await change_transaction_category(db, tx, cat.id)
             await remember_merchant_category(db, db_user.id, tx.merchant, cat.id)
+            tx.status = "confirmed"
+            await db.commit()
+            await _release_if_current(state, tx.id)
+            await _show_tx(callback, db, tx)
+            await callback.answer(f"✅ {cat.name}")
+
+        elif action == "edit":
+            tx.status = "pending"
             await db.commit()
             await _show_tx(callback, db, tx)
-            await callback.answer(f"Категорія: {cat.name}")
+            await _await_input(state, tx, callback.message.message_id)
+            await callback.answer()
 
         elif action == "del":
             headline = _headline(tx.amount, tx.currency, tx.merchant)
             await delete_transaction_record(db, tx)
             await db.commit()
+            await _release_if_current(state, tx_id)
             await callback.message.edit_text(f"<s>{headline}</s>\n\n🗑 Видалено", reply_markup=None)
             await callback.answer("Видалено")
 
@@ -263,38 +300,11 @@ async def wallet_tx_action(callback: CallbackQuery, db_user: User, state: FSMCon
             await move_transaction_account(db, tx, acc)
             await db.commit()
             await _show_tx(callback, db, tx)
+            await _await_input(state, tx, callback.message.message_id)
             await callback.answer(f"Картку привʼязано до «{acc.name}»")
 
         elif action == "new":
             await _start_new_account(callback, state, "tx", tx.id, tx.card, tx.currency)
-
-        elif action == "note":
-            await state.clear()
-            await state.set_state(WalletNote.waiting_text)
-            await state.update_data(w_tx_id=tx.id, **{HOST_MID_KEY: callback.message.message_id})
-            b = InlineKeyboardBuilder()
-            if get_note(tx):
-                b.row(InlineKeyboardButton(text="🗑 Прибрати коментар", callback_data="wnote:clear"))
-            b.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="wnote:cancel"))
-            await callback.message.edit_text(
-                f"{_headline(tx.amount, tx.currency, tx.merchant)}\n\n💬 Напиши коментар до витрати:",
-                reply_markup=b.as_markup(),
-            )
-            await callback.answer()
-
-        elif action == "rcpt":
-            await state.clear()
-            await state.set_state(WalletReceipt.waiting_photo)
-            await state.update_data(w_tx_id=tx.id, **{HOST_MID_KEY: callback.message.message_id})
-            b = InlineKeyboardBuilder()
-            b.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="wrc:cancel"))
-            await callback.message.edit_text(
-                f"{_headline(tx.amount, tx.currency, tx.merchant)}\n\n"
-                f"🧾 Надішли фото чека — розкладу позиції за категоріями "
-                f"і розібʼю витрату, якщо там різне (наприклад, продукти й тютюн).",
-                reply_markup=b.as_markup(),
-            )
-            await callback.answer()
 
         else:
             await callback.answer()
@@ -313,57 +323,7 @@ async def wallet_pending_new_account(callback: CallbackQuery, db_user: User, sta
     await _start_new_account(callback, state, "pending", p.id, p.card, p.currency)
 
 
-# ── 💬 Коментар ──────────────────────────────────────────────────────────────
-
-async def _restore_tx(bot, chat_id: int, state: FSMContext, tx_id: int | None) -> None:
-    async with AsyncSessionLocal() as db:
-        tx = await db.get(Transaction, tx_id) if tx_id else None
-        if tx:
-            text, markup = await build_tx_view(db, tx)
-        else:
-            text, markup = "Витрату вже оброблено.", None
-    await _edit_host(bot, chat_id, state, text, markup)
-    await state.clear()
-
-
-async def _save_note(bot, chat_id: int, db_user: User, state: FSMContext, note: str | None) -> None:
-    tx_id = (await state.get_data()).get("w_tx_id")
-    async with AsyncSessionLocal() as db:
-        tx = await db.get(Transaction, tx_id) if tx_id else None
-        if tx and tx.user_id == db_user.id:
-            set_note(tx, note)
-            await db.commit()
-    await _restore_tx(bot, chat_id, state, tx_id)
-
-
-@router.message(WalletNote.waiting_text, F.text)
-async def wallet_note_text(message: Message, db_user: User, state: FSMContext) -> None:
-    note = message.text.strip()
-    if not note:
-        await message.answer("Коментар порожній. Напиши текст або натисни «Скасувати».")
-        return
-    await _save_note(message.bot, message.chat.id, db_user, state, note)
-
-
-@router.callback_query(F.data.startswith("wnote:"))
-async def wallet_note_buttons(callback: CallbackQuery, db_user: User, state: FSMContext) -> None:
-    if not _is_owner(callback.from_user.id):
-        await callback.answer()
-        return
-    data = await state.get_data()
-    if "w_tx_id" not in data:
-        await callback.answer("Діалог застарів", show_alert=True)
-        return
-    chat_id = callback.message.chat.id
-    if callback.data == "wnote:clear":
-        await _save_note(callback.bot, chat_id, db_user, state, None)
-        await callback.answer("Коментар прибрано")
-    else:
-        await _restore_tx(callback.bot, chat_id, state, data["w_tx_id"])
-        await callback.answer()
-
-
-# ── 🧾 Чек → розбивка за категоріями ──────────────────────────────────────────
+# ── «Що купив»: текст або фото чека → розкладка за категоріями ───────────────
 
 async def _download_image(message: Message) -> tuple[str, str] | None:
     """(base64, media_type) з фото або зображення-документа; None — якщо це не зображення."""
@@ -378,67 +338,69 @@ async def _download_image(message: Message) -> tuple[str, str] | None:
     return base64.b64encode(data.read()).decode(), media_type
 
 
-async def _expense_categories(db, user_id: int) -> list[Category]:
-    return (await db.execute(
-        select(Category).where(and_(Category.user_id == user_id, Category.type == "expense"))
-    )).scalars().all()
-
-
 def _split_view(tx: Transaction, groups: list[dict], cats: dict[int, Category]) -> tuple[str, InlineKeyboardMarkup]:
-    lines = [_headline(tx.amount, tx.currency, tx.merchant), "", "🧾 <b>Чек розпізнано:</b>"]
+    lines = [_headline(tx.amount, tx.currency, tx.merchant), "", "🧾 <b>Розклав так:</b>"]
     for g in groups:
-        cat = cats.get(g["category_id"] or tx.category_id)
         if g["new_category"]:
             label = f"🆕 {html.escape(g['new_category'])}"
         else:
-            label = html.escape(f"{cat.icon or ''} {cat.name}".strip()) if cat else "Без категорії"
+            label = _cat_label(cats.get(g["category_id"] or tx.category_id))
         names = ", ".join(g["names"])
         names = f" ({html.escape(names[:80] + ('…' if len(names) > 80 else ''))})" if names else ""
-        lines.append(f"• {label} — <b>{fmt_amount(g['amount'], tx.currency)}</b>{names}")
+        approx = "≈" if g.get("estimated") else ""
+        lines.append(f"• {label} — <b>{approx}{fmt_amount(g['amount'], tx.currency)}</b>{names}")
     b = InlineKeyboardBuilder()
-    ok_text = "✅ Розбити" if len(groups) > 1 else "✅ Застосувати"
     b.row(
-        InlineKeyboardButton(text=ok_text, callback_data="wrc:ok"),
-        InlineKeyboardButton(text="❌ Скасувати", callback_data="wrc:cancel"),
+        InlineKeyboardButton(text="✅ Зберегти", callback_data="wrc:ok"),
+        InlineKeyboardButton(text="✏️ Вручну", callback_data="wrc:manual"),
     )
     return "\n".join(lines), b.as_markup()
 
 
-@router.message(WalletReceipt.waiting_photo)
-async def wallet_receipt_photo(message: Message, db_user: User, state: FSMContext) -> None:
-    image = await _download_image(message)
-    if not image:
-        await message.answer("Надішли саме фото чека або натисни «Скасувати».")
+@router.message(WalletFlow.waiting_input, ~F.text.startswith("/"))
+async def wallet_purchase_input(message: Message, db_user: User, state: FSMContext) -> None:
+    text = (message.text or message.caption or "").strip()
+    image = None if message.text else await _download_image(message)
+    if not text and not image:
+        await message.answer("Напиши, що купив, або надішли фото чека.")
         return
     tx_id = (await state.get_data()).get("w_tx_id")
     async with AsyncSessionLocal() as db:
         tx = await db.get(Transaction, tx_id) if tx_id else None
-        if not tx or tx.user_id != db_user.id:
-            await _edit_host(message.bot, message.chat.id, state, "Витрату вже оброблено.")
+        if not tx or tx.user_id != db_user.id or tx.status != "pending":
             await state.clear()
+            await message.answer("Ця витрата вже оброблена.")
             return
         cats = await _expense_categories(db, db_user.id)
 
+    headline = _headline(tx.amount, tx.currency, tx.merchant)
     await _edit_host(message.bot, message.chat.id, state,
-                     f"{_headline(tx.amount, tx.currency, tx.merchant)}\n\n📸 Розпізнаю чек...")
+                     f"{headline}\n\n{'📸 Розпізнаю чек' if image else '🤖 Розкладаю'}...")
     from app.services.claude_service import claude_service
-    parsed = await claude_service.parse_receipt_items(
-        image[0], [{"id": c.id, "name": c.name} for c in cats], media_type=image[1],
-    )
+    cat_list = [{"id": c.id, "name": c.name} for c in cats]
+    if image:
+        parsed = await claude_service.parse_receipt_items(image[0], cat_list, media_type=image[1])
+    else:
+        parsed = await claude_service.parse_purchase_text(text, tx.amount, tx.currency, cat_list)
     groups = [] if "error" in parsed else split_by_category(parsed.get("items") or [], tx.amount, cats)
+
     if not groups:
-        logger.info("Wallet receipt not parsed (tx_id=%s): %s", tx.id, parsed.get("error"))
+        logger.info("Wallet input not parsed (tx_id=%s): %s", tx.id, parsed.get("error"))
         async with AsyncSessionLocal() as db:
-            text, markup = await build_tx_view(db, tx)
-        await _edit_host(message.bot, message.chat.id, state,
-                         f"❌ Не вдалось розпізнати чек. Спробуй чіткіше фото.\n\n{text}", markup)
-        await state.clear()
+            view, markup = await build_tx_view(db, tx)
+        what = "чек. Спробуй чіткіше фото" if image else "опис. Спробуй інакше"
+        await _edit_host(message.bot, message.chat.id, state, f"❌ Не зрозумів {what} або обери категорію.\n\n{view}", markup)
         return
 
-    await state.set_state(WalletReceipt.confirming)
-    await state.update_data(w_split=groups, w_amount=tx.amount)
-    text, markup = _split_view(tx, groups, {c.id: c for c in cats})
-    await _edit_host(message.bot, message.chat.id, state, text, markup)
+    note = text or None
+    if len(groups) == 1:
+        # Одна категорія — зберігаємо одразу, без підтвердження
+        await _save_groups(message.bot, message.chat.id, db_user, state, tx.id, tx.amount, groups, note)
+        return
+    await state.set_state(WalletFlow.confirming)
+    await state.update_data(w_split=groups, w_amount=tx.amount, w_note=note)
+    view, markup = _split_view(tx, groups, {c.id: c for c in cats})
+    await _edit_host(message.bot, message.chat.id, state, view, markup)
 
 
 async def _category_for_group(db, user_id: int, g: dict, fallback_id: int | None) -> int | None:
@@ -452,9 +414,12 @@ async def _category_for_group(db, user_id: int, g: dict, fallback_id: int | None
     return cat.id
 
 
-async def _apply_split(db, db_user: User, tx: Transaction, groups: list[dict]) -> list[Transaction]:
+async def _apply_split(
+    db, db_user: User, tx: Transaction, groups: list[dict], note: str | None = None,
+) -> list[Transaction]:
     """Одна група — змінюємо категорію й коментар на місці; кілька — видаляємо витрату
-    й створюємо по одній на групу (баланс рахунку в сумі не змінюється)."""
+    й створюємо по одній на групу (баланс рахунку в сумі не змінюється).
+    note — коментар для однієї групи (інакше — назви позицій)."""
     new_cat_ids: dict[str, int] = {}
 
     async def cat_id(g: dict) -> int | None:
@@ -469,22 +434,23 @@ async def _apply_split(db, db_user: User, tx: Transaction, groups: list[dict]) -
     if len(groups) == 1:
         g = groups[0]
         await change_transaction_category(db, tx, await cat_id(g))
-        if g["names"]:
-            set_note(tx, ", ".join(g["names"]))
+        if note or g["names"]:
+            set_note(tx, note or ", ".join(g["names"]))
         tx.status = "confirmed"
         return [tx]
 
     account = await db.get(Account, tx.account_id)
+    merchant = tx.merchant
     base = dict(
         user_id=tx.user_id, account=account, type=tx.type, currency=tx.currency, date=tx.date,
-        source=WALLET_SOURCE, merchant=tx.merchant, card=tx.card,
+        source=WALLET_SOURCE, merchant=merchant, card=tx.card,
     )
     await delete_transaction_record(db, tx)
     parts = []
     for g in groups:
         part = await create_transaction_record(
             db, amount=g["amount"], category_id=await cat_id(g),
-            description=(_note_sep(tx.merchant) + ", ".join(g["names"]))[:512] if g["names"] else tx.merchant,
+            description=(_note_sep(merchant) + ", ".join(g["names"]))[:512] if g["names"] else merchant,
             **base,
         )
         part.status = "confirmed"
@@ -492,45 +458,60 @@ async def _apply_split(db, db_user: User, tx: Transaction, groups: list[dict]) -
     return parts
 
 
-@router.callback_query(F.data.startswith("wrc:"))
-async def wallet_receipt_buttons(callback: CallbackQuery, db_user: User, state: FSMContext) -> None:
-    if not _is_owner(callback.from_user.id):
-        await callback.answer()
-        return
-    data = await state.get_data()
-    if "w_tx_id" not in data:
-        await callback.answer("Діалог застарів", show_alert=True)
-        return
-    chat_id = callback.message.chat.id
-    if callback.data != "wrc:ok" or "w_split" not in data:
-        await _restore_tx(callback.bot, chat_id, state, data["w_tx_id"])
-        await callback.answer()
-        return
-
+async def _save_groups(
+    bot, chat_id: int, db_user: User, state: FSMContext, tx_id: int, amount: float,
+    groups: list[dict], note: str | None,
+) -> None:
     async with AsyncSessionLocal() as db:
-        tx = await db.get(Transaction, data["w_tx_id"])
-        if not tx or tx.user_id != db_user.id or tx.amount != data["w_amount"]:
-            await _edit_host(callback.bot, chat_id, state, "Витрату вже змінено — розбивку скасовано.")
+        tx = await db.get(Transaction, tx_id)
+        if not tx or tx.user_id != db_user.id or tx.amount != amount:
+            await _edit_host(bot, chat_id, state, "Витрату вже змінено — розкладку скасовано.")
             await state.clear()
-            await callback.answer()
             return
         headline = _headline(tx.amount, tx.currency, tx.merchant)
-        parts = await _apply_split(db, db_user, tx, data["w_split"])
+        account = await db.get(Account, tx.account_id)
+        parts = await _apply_split(db, db_user, tx, groups, note)
         await db.commit()
         if len(parts) == 1:
             text, markup = await build_tx_view(db, parts[0])
         else:
-            lines = [headline, "", f"🧾 Розбито на {len(parts)} витрати:"]
+            lines = [f"{headline} · {html.escape(account.name) if account else '—'}",
+                     f"✅ Розбито на {len(parts)}:"]
             for part in parts:
                 cat = await db.get(Category, part.category_id) if part.category_id else None
-                lines.append(f"• {html.escape(cat.name) if cat else 'Без категорії'} — "
-                             f"<b>{fmt_amount(part.amount, part.currency)}</b>")
-            lines.append("\n✅ Підтверджено")
+                lines.append(f"• {_cat_label(cat)} — <b>{fmt_amount(part.amount, part.currency)}</b>")
             text, markup = "\n".join(lines), None
-        logger.info("Wallet receipt applied: tx_id=%s parts=%s", data["w_tx_id"], [p.id for p in parts])
-    await _edit_host(callback.bot, chat_id, state, text, markup)
+        logger.info("Wallet split applied: tx_id=%s parts=%s", tx_id, [p.id for p in parts])
+    await _edit_host(bot, chat_id, state, text, markup)
     await state.clear()
-    await callback.answer("Готово")
+
+
+@router.callback_query(F.data.startswith("wrc:"))
+async def wallet_split_buttons(callback: CallbackQuery, db_user: User, state: FSMContext) -> None:
+    if not _is_owner(callback.from_user.id):
+        await callback.answer()
+        return
+    data = await state.get_data()
+    if "w_split" not in data:
+        await callback.answer("Діалог застарів", show_alert=True)
+        return
+    chat_id = callback.message.chat.id
+    if callback.data == "wrc:ok":
+        await _save_groups(callback.bot, chat_id, db_user, state, data["w_tx_id"], data["w_amount"],
+                           data["w_split"], data.get("w_note"))
+        await callback.answer("Збережено")
+        return
+    # ✏️ Вручну — назад до кроку 1
+    async with AsyncSessionLocal() as db:
+        tx = await db.get(Transaction, data["w_tx_id"])
+        if not tx:
+            await state.clear()
+            await callback.answer("Витрату не знайдено", show_alert=True)
+            return
+        text, markup = await build_tx_view(db, tx)
+    await _edit_host(callback.bot, chat_id, state, text, markup)
+    await _await_input(state, tx, data.get(HOST_MID_KEY))
+    await callback.answer()
 
 
 # ── Діалог «➕ Новий рахунок» ────────────────────────────────────────────────
@@ -687,8 +668,11 @@ async def _finish_new_account(bot, chat_id: int, db_user: User, state: FSMContex
             text, markup = await build_tx_view(db, tx)
         else:
             text, markup = f"✅ Рахунок «{html.escape(acc.name)}» створено.", None
+    host_mid = data.get(HOST_MID_KEY)
     await _edit_host(bot, chat_id, state, text, markup)
     await state.clear()
+    if tx:
+        await _await_input(state, tx, host_mid)
 
 
 # ── /cards: привʼязки карток ─────────────────────────────────────────────────
