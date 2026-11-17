@@ -12,6 +12,8 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
+    # Коли користувач востаннє «почав з нуля» (UTC); старіші операції банку ігноруються
+    history_reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Зв'язки
     accounts: Mapped[list["Account"]] = relationship("Account", back_populates="user", cascade="all, delete-orphan")

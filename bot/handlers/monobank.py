@@ -13,6 +13,7 @@
 """
 import logging
 import time
+from datetime import timezone
 from itertools import count
 
 from aiogram import Router, F
@@ -49,6 +50,13 @@ router = Router()
 _pending: dict[str, dict] = {}
 _pid_counter = count(1)
 _MAX_PENDING = 1000
+
+
+def drop_user_pending(user_id: int) -> None:
+    """Прибирає непідтверджені операції користувача (після «Почати з нуля»)."""
+    for pid, p in list(_pending.items()):
+        if p.get("user_id") == user_id:
+            _pending.pop(pid, None)
 
 
 def _register_pending(data: dict) -> str:
@@ -464,6 +472,13 @@ async def _process_statement_item(connection_id: int, mono_account_id: str, item
                 "Monobank webhook ignored: user=%s account=%s "
                 "(connection_id=%s, mono_account_id=%s, account_id=%s)",
                 bool(user), bool(account), connection_id, mono_account_id, card.account_id,
+            )
+            return
+
+        reset_at = user.history_reset_at
+        if reset_at and (item.get("time") or 0) < reset_at.replace(tzinfo=timezone.utc).timestamp():
+            logger.info(
+                "Monobank item before history reset — skip (user_id=%s, item_id=%s)", user.id, item.get("id"),
             )
             return
 

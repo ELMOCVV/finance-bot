@@ -50,6 +50,7 @@ def settings_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏷 Категорії", callback_data="menu:categories"),
     )
     b.row(InlineKeyboardButton(text="🏦 Підключити Monobank", callback_data="mono:menu"))
+    b.row(InlineKeyboardButton(text="🧹 Почати з нуля", callback_data="reset:start"))
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu:main"))
     return b.as_markup()
 

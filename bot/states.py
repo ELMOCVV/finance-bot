@@ -96,3 +96,8 @@ class WalletFlow(StatesGroup):
     waiting_input = State()   # «що купив?» — текст або фото чека
     confirming = State()      # розкладка на кілька категорій чекає «✅ Зберегти»
     new_category = State()    # «➕ Нова категорія»: чекаємо назву
+
+
+class ResetHistory(StatesGroup):
+    waiting_confirm = State()   # чекаємо слово СКИНУТИ
+    waiting_balance = State()   # стартові баланси рахунків по черзі

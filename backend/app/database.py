@@ -61,6 +61,8 @@ _PG_MIGRATIONS = [
     # accounts ──────────────────────────────────────────────────────
     "ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE NOT NULL",
     "UPDATE accounts SET is_default = FALSE WHERE is_default IS NULL",
+    # users ─────────────────────────────────────────────────────────
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS history_reset_at TIMESTAMP",
 ]
 
 # SQLite не підтримує ADD COLUMN IF NOT EXISTS — помилка «duplicate column»
@@ -69,6 +71,7 @@ _SQLITE_MIGRATIONS = [
     "ALTER TABLE transactions ADD COLUMN merchant VARCHAR(128)",
     "ALTER TABLE transactions ADD COLUMN card VARCHAR(64)",
     "ALTER TABLE transactions ADD COLUMN status VARCHAR(16) DEFAULT 'confirmed' NOT NULL",
+    "ALTER TABLE users ADD COLUMN history_reset_at TIMESTAMP",
 ]
 
 
