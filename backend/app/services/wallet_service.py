@@ -282,7 +282,7 @@ def split_by_category(
             key = ("none",)
         g = groups.setdefault(key, {
             "category_id": cat.id if cat else None, "new_category": new_name, "amount": 0.0, "names": [],
-            "estimated": False,
+            "estimated": False, "new_icon": (item.get("new_icon") or "").strip()[:16] or None if new_name else None,
         })
         g["amount"] += amount
         g["estimated"] = g["estimated"] or bool(item.get("estimated"))

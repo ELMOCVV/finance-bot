@@ -95,3 +95,4 @@ class WalletNewAccount(StatesGroup):
 class WalletFlow(StatesGroup):
     waiting_input = State()   # «що купив?» — текст або фото чека
     confirming = State()      # розкладка на кілька категорій чекає «✅ Зберегти»
+    new_category = State()    # «➕ Нова категорія»: чекаємо назву

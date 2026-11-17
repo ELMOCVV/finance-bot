@@ -8,6 +8,7 @@
          кілька — розкладка + «✅ Зберегти»; витрата ділиться на кілька). Або
          одним натиском обирає категорію: підказана (запамʼятована для продавця →
          словник → Claude Haiku) — першою з ⭐; вибір запамʼятовується за продавцем.
+         «➕ Нова категорія» — назва (можна з емодзі) → категорія створюється й застосовується.
          Текст/чек продавця не запамʼятовують — категорію визначає, що куплено.
   Підсумок — «✅ категорія — коментар» і «✏️ Змінити» (повернутися до кроку 1).
 Текст власника, поки витрата чекає на крок 1, вважається описом цієї витрати
@@ -39,7 +40,7 @@ from app.services.transaction_service import (
 )
 from app.services.wallet_service import (
     WALLET_SOURCE, bind_card, get_card_binding, get_remembered_category_id,
-    pick_category, remember_merchant_category, split_by_category,
+    normalize_key, pick_category, remember_merchant_category, split_by_category,
 )
 from bot.states import WalletFlow, WalletNewAccount
 from bot.utils.fsm_edit import HOST_MID_KEY
@@ -146,7 +147,10 @@ async def build_tx_view(db, tx: Transaction) -> tuple[str, InlineKeyboardMarkup 
         star = "⭐ " if c.id == tx.category_id else ""
         b.button(text=f"{star}{c.icon or ''} {c.name}".strip()[:40], callback_data=f"wtx:sc:{tx.id}:{c.id}")
     b.adjust(2)
-    b.row(InlineKeyboardButton(text="🗑 Видалити", callback_data=f"wtx:del:{tx.id}"))
+    b.row(
+        InlineKeyboardButton(text="➕ Нова категорія", callback_data=f"wtx:newcat:{tx.id}"),
+        InlineKeyboardButton(text="🗑 Видалити", callback_data=f"wtx:del:{tx.id}"),
+    )
     lines = [
         f"{headline} · {acc_name}",
         "",
@@ -306,6 +310,19 @@ async def wallet_tx_action(callback: CallbackQuery, db_user: User, state: FSMCon
         elif action == "new":
             await _start_new_account(callback, state, "tx", tx.id, tx.card, tx.currency)
 
+        elif action == "newcat":
+            await state.clear()
+            await state.set_state(WalletFlow.new_category)
+            await state.update_data(w_tx_id=tx.id, **{HOST_MID_KEY: callback.message.message_id})
+            b = InlineKeyboardBuilder()
+            b.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="wncat:cancel"))
+            await callback.message.edit_text(
+                f"{_headline(tx.amount, tx.currency, tx.merchant)}\n\n"
+                f"➕ Напиши назву нової категорії — можна з емодзі на початку (напр. «🚬 Тютюн»):",
+                reply_markup=b.as_markup(),
+            )
+            await callback.answer()
+
         else:
             await callback.answer()
 
@@ -338,11 +355,14 @@ async def _download_image(message: Message) -> tuple[str, str] | None:
     return base64.b64encode(data.read()).decode(), media_type
 
 
-def _split_view(tx: Transaction, groups: list[dict], cats: dict[int, Category]) -> tuple[str, InlineKeyboardMarkup]:
-    lines = [_headline(tx.amount, tx.currency, tx.merchant), "", "🧾 <b>Розклав так:</b>"]
+def _split_view(
+    tx: Transaction, groups: list[dict], cats: dict[int, Category], from_photo: bool = False,
+) -> tuple[str, InlineKeyboardMarkup]:
+    title = "🧾 <b>Чек розкладено так:</b>" if from_photo else "🤖 <b>Розклав так:</b>"
+    lines = [_headline(tx.amount, tx.currency, tx.merchant), "", title]
     for g in groups:
         if g["new_category"]:
-            label = f"🆕 {html.escape(g['new_category'])}"
+            label = f"🆕 {html.escape((g.get('new_icon') or '') + ' ' + g['new_category']).strip()}"
         else:
             label = _cat_label(cats.get(g["category_id"] or tx.category_id))
         names = ", ".join(g["names"])
@@ -399,7 +419,7 @@ async def wallet_purchase_input(message: Message, db_user: User, state: FSMConte
         return
     await state.set_state(WalletFlow.confirming)
     await state.update_data(w_split=groups, w_amount=tx.amount, w_note=note)
-    view, markup = _split_view(tx, groups, {c.id: c for c in cats})
+    view, markup = _split_view(tx, groups, {c.id: c for c in cats}, from_photo=bool(image))
     await _edit_host(message.bot, message.chat.id, state, view, markup)
 
 
@@ -408,7 +428,7 @@ async def _category_for_group(db, user_id: int, g: dict, fallback_id: int | None
         return g["category_id"]
     if not g["new_category"]:
         return fallback_id
-    cat = Category(user_id=user_id, name=g["new_category"], type="expense", icon="🏷")
+    cat = Category(user_id=user_id, name=g["new_category"], type="expense", icon=g.get("new_icon") or "🏷")
     db.add(cat)
     await db.flush()
     return cat.id
@@ -510,6 +530,69 @@ async def wallet_split_buttons(callback: CallbackQuery, db_user: User, state: FS
             return
         text, markup = await build_tx_view(db, tx)
     await _edit_host(callback.bot, chat_id, state, text, markup)
+    await _await_input(state, tx, data.get(HOST_MID_KEY))
+    await callback.answer()
+
+
+# ── «➕ Нова категорія» з кроку 1 ───────────────────────────────────────────
+
+def split_icon(text: str) -> tuple[str | None, str]:
+    """«🚬 Тютюн» → ("🚬", "Тютюн"); «Тютюн» → (None, "Тютюн")."""
+    text = " ".join(text.split())
+    head, _, rest = text.partition(" ")
+    if rest and not any(ch.isalnum() for ch in head):
+        return head[:16], rest
+    return None, text
+
+
+async def _find_or_create_category(db, user_id: int, name: str, icon: str | None) -> Category:
+    for c in await _expense_categories(db, user_id):
+        if normalize_key(c.name, 128) == normalize_key(name, 128):
+            return c
+    cat = Category(user_id=user_id, name=name[:128], type="expense", icon=icon or "🏷")
+    db.add(cat)
+    await db.flush()
+    return cat
+
+
+@router.message(WalletFlow.new_category, F.text, ~F.text.startswith("/"))
+async def wallet_new_category_name(message: Message, db_user: User, state: FSMContext) -> None:
+    icon, name = split_icon(message.text)
+    if not name:
+        await message.answer("Назва порожня. Напиши назву категорії або натисни «Скасувати».")
+        return
+    tx_id = (await state.get_data()).get("w_tx_id")
+    async with AsyncSessionLocal() as db:
+        tx = await db.get(Transaction, tx_id) if tx_id else None
+        if not tx or tx.user_id != db_user.id:
+            await state.clear()
+            await message.answer("Ця витрата вже оброблена.")
+            return
+        cat = await _find_or_create_category(db, db_user.id, name, icon)
+        await change_transaction_category(db, tx, cat.id)
+        await remember_merchant_category(db, db_user.id, tx.merchant, cat.id)
+        tx.status = "confirmed"
+        await db.commit()
+        text, markup = await build_tx_view(db, tx)
+    logger.info("Wallet: category %r (id=%s) for tx_id=%s", cat.name, cat.id, tx_id)
+    await _edit_host(message.bot, message.chat.id, state, text, markup)
+    await state.clear()
+
+
+@router.callback_query(F.data == "wncat:cancel")
+async def wallet_new_category_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    if not _is_owner(callback.from_user.id):
+        await callback.answer()
+        return
+    data = await state.get_data()
+    async with AsyncSessionLocal() as db:
+        tx = await db.get(Transaction, data["w_tx_id"]) if data.get("w_tx_id") else None
+        if not tx:
+            await state.clear()
+            await callback.answer("Діалог застарів", show_alert=True)
+            return
+        text, markup = await build_tx_view(db, tx)
+    await _edit_host(callback.bot, callback.message.chat.id, state, text, markup)
     await _await_input(state, tx, data.get(HOST_MID_KEY))
     await callback.answer()
 

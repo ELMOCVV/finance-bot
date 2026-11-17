@@ -228,7 +228,7 @@ def test_message_sent_after_save(client, fake_bot):
     # Підказана категорія («Інше» — fallback) першою з ⭐, решта — за назвою; внизу видалення
     assert buttons(msg["markup"]) == [
         ("⭐ 💸 Інше", f"wtx:sc:{tx.id}:{other}"), ("🍔 Їжа", f"wtx:sc:{tx.id}:{food}"),
-        ("🗑 Видалити", f"wtx:del:{tx.id}"),
+        ("➕ Нова категорія", f"wtx:newcat:{tx.id}"), ("🗑 Видалити", f"wtx:del:{tx.id}"),
     ]
     # Бот чекає на опис саме цієї витрати
     st = owner_state()
@@ -643,13 +643,14 @@ def test_text_with_two_categories_previews_then_splits(client, fake_bot, ai):
     assert q(client, _budgets) == {"Їжа": 450, "Інше": 0}               # «сільпо» → Їжа за словником
     ai.result["value"] = {"items": [
         {"name": "хліб, молоко", "amount": 300, "cat": "Їжа"},
-        {"name": "сигарети", "amount": 150, "new_category": "Тютюн"},
+        {"name": "сигарети", "amount": 150, "new_category": "Тютюн", "new_icon": "🚬"},
     ]}
     send_input(client, fake_bot, text="хліб, молоко 300, сигарети 150")
     assert ai.calls == [("text", "хліб, молоко 300, сигарети 150", 450.0, "UAH")]
     preview = fake_bot.edited[-1]
     assert preview["message_id"] == 101                                   # редагуємо те саме повідомлення
-    assert "🆕 Тютюн" in preview["text"] and "300,00 ₴" in preview["text"]
+    assert "🤖 <b>Розклав так" in preview["text"]
+    assert "🆕 🚬 Тютюн" in preview["text"] and "300,00 ₴" in preview["text"]
     assert buttons(preview["markup"]) == [("✅ Зберегти", "wrc:ok"), ("✏️ Вручну", "wrc:manual")]
     assert len(q(client, _txs)) == 1                                      # до підтвердження нічого не змінено
 
@@ -661,7 +662,8 @@ def test_text_with_two_categories_previews_then_splits(client, fake_bot, ai):
     ]
     assert q(client, _accounts)["Monobank"].balance == pytest.approx(1000 - 450)
     assert q(client, _budgets)["Їжа"] == pytest.approx(300.0)
-    assert txs[1].category_id == q(client, lambda db: _cat_id(db, "Тютюн"))
+    tobacco = q(client, lambda db: db.get(Category, txs[1].category_id))
+    assert (tobacco.name, tobacco.icon) == ("Тютюн", "🚬")
     assert q(client, lambda db: _count(db, MerchantCategory)) == 0         # продавця не запамʼятовуємо
     assert "Розбито на 2" in fake_bot.edited[-1]["text"]
     assert client.portal.call(owner_state().get_state) is None
@@ -692,7 +694,7 @@ def test_receipt_photo_goes_through_the_same_flow(client, fake_bot, ai):
         {"name": "Marlboro", "amount": 150, "new_category": "Тютюн"},
     ]}
     send_input(client, fake_bot, photo=True)
-    assert ai.calls[0][0] == "photo"
+    assert ai.calls[0][0] == "photo" and "🧾 <b>Чек розкладено так" in fake_bot.edited[-1]["text"]
     assert "Хліб" in fake_bot.edited[-1]["text"] and "337,50 ₴" in fake_bot.edited[-1]["text"]  # 150/200·450
     press(client, fake_bot, "wrc:ok")
     assert sorted(t.amount for t in q(client, _txs)) == [112.5, 337.5]
@@ -791,3 +793,55 @@ def test_new_spend_does_not_interrupt_another_dialog(client, fake_bot, state):
     post(client, YID)
     assert "Що купив?" in fake_bot.sent[-1]["text"]                       # кнопки є
     assert client.portal.call(state.get_state) == AddTransaction.waiting_text.state
+
+
+# ── «➕ Нова категорія» ───────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("raw, expected", [
+    ("🚬 Тютюн", ("🚬", "Тютюн")),
+    ("  Тютюн  ", (None, "Тютюн")),
+    ("Подарунки мамі", (None, "Подарунки мамі")),
+    ("🎁", (None, "🎁")),
+])
+def test_split_icon(raw, expected):
+    assert wh.split_icon(raw) == expected
+
+
+def _new_category(client, fake_bot, tx_id, name):
+    host = FakeMessage(fake_bot, message_id=401)
+    press(client, fake_bot, f"wtx:newcat:{tx_id}", message=host)
+    assert "Напиши назву нової категорії" in host.edits[-1]["text"]
+    assert client.portal.call(owner_state().get_state) == "WalletFlow:new_category"
+    client.portal.call(wh.wallet_new_category_name, FakeMessage(fake_bot, text=name), q(client, _user), owner_state())
+
+
+def test_new_category_button_creates_and_saves(client, fake_bot):
+    seed(client)
+    q(client, _bind_monobank)
+    tx_id = post(client, YID).json()["id"]
+    _new_category(client, fake_bot, tx_id, "🚬 Тютюн")
+    tx = q(client, lambda db: db.get(Transaction, tx_id))
+    cat = q(client, lambda db: db.get(Category, tx.category_id))
+    assert (cat.name, cat.icon, cat.type) == ("Тютюн", "🚬", "expense")
+    assert tx.status == "confirmed"
+    assert "✅ 🚬 Тютюн" in fake_bot.edited[-1]["text"] and fake_bot.edited[-1]["message_id"] == 401
+    assert q(client, lambda db: _count(db, MerchantCategory)) == 1          # як ручний вибір
+    assert client.portal.call(owner_state().get_state) is None
+
+    # Та сама назва вдруге — без дубліката
+    tx2 = post(client, {**YID, "amount": "5 ₴"}).json()["id"]
+    _new_category(client, fake_bot, tx2, "тютюн")
+    assert q(client, lambda db: db.get(Transaction, tx2)).category_id == cat.id
+    assert q(client, lambda db: _count(db, Category)) == 4
+
+
+def test_new_category_cancel_returns_to_step_one(client, fake_bot):
+    seed(client)
+    q(client, _bind_monobank)
+    tx_id = post(client, YID).json()["id"]
+    press(client, fake_bot, f"wtx:newcat:{tx_id}", message=FakeMessage(fake_bot, message_id=401))
+    cb = FakeCallback(fake_bot, "wncat:cancel")
+    client.portal.call(wh.wallet_new_category_cancel, cb, owner_state())
+    assert "Що купив?" in fake_bot.edited[-1]["text"]
+    assert client.portal.call(owner_state().get_state) == "WalletFlow:waiting_input"
+    assert q(client, lambda db: db.get(Transaction, tx_id)).status == "pending"
