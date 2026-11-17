@@ -6,68 +6,68 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Системний промпт для парсингу транзакцій
-PARSE_TRANSACTION_PROMPT = """Ти — фінансовий асистент. Парсуй повідомлення та витягуй фінансові транзакції.
+# Системный промпт для разбора транзакций
+PARSE_TRANSACTION_PROMPT = """Ты — финансовый ассистент. Разбирай сообщение и извлекай финансовые транзакции.
 
-Відповідай ВИКЛЮЧНО валідним JSON без жодного тексту навколо.
+Отвечай ИСКЛЮЧИТЕЛЬНО валидным JSON без какого-либо текста вокруг.
 
-Структура транзакції:
+Структура транзакции:
 {
   "type": "expense" | "income" | "transfer",
   "amount": число,
   "currency": "UAH" | "USD" | "USDT" | "EUR" | ...,
-  "description": "опис",
-  "category_hint": "категорія (їжа, транспорт, розваги, ...)",
-  "account_hint": "рахунок (картка, готівка, ...) або null",
-  "date_hint": null або "сьогодні" | "вчора" | ISO-дата
+  "description": "описание на русском",
+  "category_hint": "категория (еда, транспорт, развлечения, ...)",
+  "account_hint": "счёт (карта, наличные, ...) или null",
+  "date_hint": null или "сегодня" | "вчера" | ISO-дата
 }
 
-Якщо в повідомленні ОДНА транзакція — поверни JSON-об'єкт:
+Если в сообщении ОДНА транзакция — верни JSON-объект:
 {"type": "expense", "amount": 50, "currency": "UAH", "description": "кофе", ...}
 
-Якщо в повідомленні КІЛЬКА транзакцій (кілька рядків, кожен з сумою) — поверни JSON-масив:
+Если в сообщении НЕСКОЛЬКО транзакций (несколько строк, у каждой своя сумма) — верни JSON-массив:
 [{"type": "expense", "amount": 50, ...}, {"type": "expense", "amount": 145, ...}]
 
-Якщо не вдалось розпарсити — поверни {"error": "причина"}.
+Если разобрать не получилось — верни {"error": "причина"}.
 """
 
-# Позиції чека з розкладом за категоріями (розбивка витрати з Wallet)
-PARSE_RECEIPT_ITEMS_PROMPT = """Ти — фінансовий асистент. На фото — касовий чек.
-Випиши кожну куплену позицію з її підсумковою ціною (з урахуванням кількості та знижки на позицію)
-і віднеси до однієї з категорій користувача (їх список у повідомленні).
-Якщо жодна категорія не підходить (наприклад, тютюн чи алкоголь, а такої категорії немає) —
-запропонуй коротку нову назву категорії українською в "new_category" і один емодзі в "new_icon",
-а "category_id" постав null.
+# Позиции чека с раскладкой по категориям (разбивка расхода из Wallet)
+PARSE_RECEIPT_ITEMS_PROMPT = """Ты — финансовый ассистент. На фото — кассовый чек.
+Выпиши каждую купленную позицию с её итоговой ценой (с учётом количества и скидки на позицию)
+и отнеси к одной из категорий пользователя (их список — в сообщении).
+Если ни одна категория не подходит (например, табак или алкоголь, а такой категории нет) —
+предложи короткое новое название категории на русском в "new_category" и один эмодзи в "new_icon",
+а "category_id" поставь null. Названия позиций пиши как в чеке.
 
-Відповідай ВИКЛЮЧНО валідним JSON без жодного тексту навколо:
-{"items": [{"name": "Хліб", "amount": 32.5, "category_id": 3, "new_category": null},
-           {"name": "Marlboro", "amount": 120, "category_id": null, "new_category": "Тютюн", "new_icon": "🚬"}],
+Отвечай ИСКЛЮЧИТЕЛЬНО валидным JSON без какого-либо текста вокруг:
+{"items": [{"name": "Хлеб", "amount": 32.5, "category_id": 3, "new_category": null},
+           {"name": "Marlboro", "amount": 120, "category_id": null, "new_category": "Табак", "new_icon": "🚬"}],
  "total": 152.5}
 
-"total" — підсумок до сплати з чека. Якщо на фото не чек або його не прочитати —
-поверни {"error": "причина"}.
+"total" — итог к оплате по чеку. Если на фото не чек или его не прочитать —
+верни {"error": "причина"}.
 """
 
-# Опис покупки текстом → позиції з категоріями (крок «Що купив?» для витрат з Wallet)
-PARSE_PURCHASE_TEXT_PROMPT = """Ти — фінансовий асистент. Користувач описав, що купив, однією оплатою.
-Сума оплати й список його категорій — у повідомленні. Розбий опис на позиції й віднеси кожну
-до категорії за тим, ЩО куплено (не за магазином). Однотипні речі можна обʼєднати в одну позицію.
-Якщо ціну вказано — "amount": число, "estimated": false. Якщо ні — оціни типову ціну в Україні,
-"estimated": true (точні суми потім віднімаються від суми оплати, решта ділиться між оцінками).
-Якщо жодна категорія не підходить (наприклад, тютюн чи алкоголь, а такої немає) —
-"category_id": null, коротка нова назва українською в "new_category" і один емодзі в "new_icon".
-Якщо в описі одна річ або все одного типу — одна позиція.
+# Описание покупки текстом → позиции с категориями (шаг «Что купил?» для расходов из Wallet)
+PARSE_PURCHASE_TEXT_PROMPT = """Ты — финансовый ассистент. Пользователь описал, что купил одной оплатой.
+Сумма оплаты и список его категорий — в сообщении. Разбей описание на позиции и отнеси каждую
+к категории по тому, ЧТО куплено (а не по магазину). Однотипные вещи можно объединить в одну позицию.
+Если цена указана — "amount": число, "estimated": false. Если нет — оцени типичную цену в Украине,
+"estimated": true (точные суммы потом вычитаются из суммы оплаты, остаток делится между оценками).
+Если ни одна категория не подходит (например, табак или алкоголь, а такой нет) —
+"category_id": null, короткое новое название на русском в "new_category" и один эмодзи в "new_icon".
+Если в описании одна вещь или всё одного типа — одна позиция. Названия позиций — на языке пользователя.
 
-Відповідай ВИКЛЮЧНО валідним JSON без жодного тексту навколо:
-{"items": [{"name": "хліб, молоко", "amount": 300, "estimated": false, "category_id": 3, "new_category": null},
-           {"name": "сигарети", "amount": 150, "estimated": false, "category_id": null, "new_category": "Тютюн", "new_icon": "🚬"}]}
+Отвечай ИСКЛЮЧИТЕЛЬНО валидным JSON без какого-либо текста вокруг:
+{"items": [{"name": "хлеб, молоко", "amount": 300, "estimated": false, "category_id": 3, "new_category": null},
+           {"name": "сигареты", "amount": 150, "estimated": false, "category_id": null, "new_category": "Табак", "new_icon": "🚬"}]}
 
-Якщо це не опис покупки — поверни {"error": "причина"}.
+Если это не описание покупки — верни {"error": "причина"}.
 """
 
-FINANCE_ASSISTANT_PROMPT = """Ти — розумний фінансовий асистент застосунку FinanceAI Bot.
-Відповідай лаконічно, по суті, українською мовою.
-Допомагай аналізувати витрати, планувати бюджет, давати поради щодо заощаджень.
+FINANCE_ASSISTANT_PROMPT = """Ты — умный финансовый ассистент приложения FinanceAI Bot.
+Отвечай кратко, по делу, на русском языке.
+Помогай анализировать расходы, планировать бюджет, давай советы по сбережениям.
 """
 
 
@@ -93,7 +93,7 @@ class ClaudeService:
             return json.loads(raw)
         except json.JSONDecodeError as e:
             logger.error("Помилка парсингу JSON від Claude: %s", e)
-            return {"error": "Не вдалось розпарсити транзакцію"}
+            return {"error": "Не удалось разобрать транзакцию"}
         except Exception as e:
             logger.error("Помилка Claude API: %s", e)
             return {"error": str(e)}
@@ -119,7 +119,7 @@ class ClaudeService:
                             },
                             {
                                 "type": "text",
-                                "text": "Розпізнай усі витрати/доходи на цьому чеку або скріншоті.",
+                                "text": "Распознай все расходы/доходы на этом чеке или скриншоте.",
                             },
                         ],
                     }
@@ -144,7 +144,7 @@ class ClaudeService:
         Повертає {"items": [{"name", "amount", "category_id", "new_category"}], "total"}
         або {"error": "..."}.
         """
-        cats_str = "\n".join(f'id={c["id"]}: {c["name"]}' for c in categories) or "(немає)"
+        cats_str = "\n".join(f'id={c["id"]}: {c["name"]}' for c in categories) or "(нет)"
         try:
             message = await self.client.messages.create(
                 model=self.model,
@@ -158,7 +158,7 @@ class ClaudeService:
                                 "type": "image",
                                 "source": {"type": "base64", "media_type": media_type, "data": image_base64},
                             },
-                            {"type": "text", "text": f"Категорії користувача:\n{cats_str}"},
+                            {"type": "text", "text": f"Категории пользователя:\n{cats_str}"},
                         ],
                     }
                 ],
@@ -170,7 +170,7 @@ class ClaudeService:
                     raw = raw[4:]
             parsed = json.loads(raw)
             if not isinstance(parsed, dict) or ("items" not in parsed and "error" not in parsed):
-                return {"error": "Неочікувана відповідь"}
+                return {"error": "Неожиданный ответ"}
             return parsed
         except Exception as e:
             logger.error("Помилка розпізнавання позицій чека: %s", e)
@@ -180,7 +180,7 @@ class ClaudeService:
         self, text: str, total: float, currency: str, categories: list[dict],
     ) -> dict:
         """Опис покупки → {"items": [...]} як у parse_receipt_items, або {"error": ...}."""
-        cats_str = "\n".join(f'id={c["id"]}: {c["name"]}' for c in categories) or "(немає)"
+        cats_str = "\n".join(f'id={c["id"]}: {c["name"]}' for c in categories) or "(нет)"
         try:
             message = await self.client.messages.create(
                 model=self.model,
@@ -188,7 +188,7 @@ class ClaudeService:
                 system=PARSE_PURCHASE_TEXT_PROMPT,
                 messages=[{
                     "role": "user",
-                    "content": f"Сума оплати: {total} {currency}\nКатегорії користувача:\n{cats_str}\n\nОпис: {text}",
+                    "content": f"Сумма оплаты: {total} {currency}\nКатегории пользователя:\n{cats_str}\n\nОписание: {text}",
                 }],
             )
             raw = message.content[0].text.strip()
@@ -198,7 +198,7 @@ class ClaudeService:
                     raw = raw[4:]
             parsed = json.loads(raw)
             if not isinstance(parsed, dict) or ("items" not in parsed and "error" not in parsed):
-                return {"error": "Неочікувана відповідь"}
+                return {"error": "Неожиданный ответ"}
             return parsed
         except Exception as e:
             logger.error("Помилка розбору опису покупки: %s", e)
@@ -212,8 +212,8 @@ class ClaudeService:
         """Відповідає на фінансове питання з урахуванням контексту користувача."""
         messages = []
         if context:
-            messages.append({"role": "user", "content": f"Контекст мого фінансового стану:\n{context}"})
-            messages.append({"role": "assistant", "content": "Зрозумів, врахую ці дані."})
+            messages.append({"role": "user", "content": f"Контекст моего финансового положения:\n{context}"})
+            messages.append({"role": "assistant", "content": "Понял, учту эти данные."})
         messages.append({"role": "user", "content": question})
 
         try:
@@ -226,7 +226,7 @@ class ClaudeService:
             return message.content[0].text
         except Exception as e:
             logger.error("Помилка Claude API: %s", e)
-            return "Вибачте, сталась помилка при зверненні до AI. Спробуйте пізніше."
+            return "Извини, произошла ошибка при обращении к AI. Попробуй позже."
 
 
 claude_service = ClaudeService()

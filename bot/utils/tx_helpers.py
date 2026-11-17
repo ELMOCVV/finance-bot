@@ -13,7 +13,7 @@ _NUM_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", 
 
 
 def build_multi_confirmation_text(multi_txs: list) -> str:
-    lines = ["📋 <b>Підтвердіть транзакції:</b>"]
+    lines = ["📋 <b>Подтвердите транзакции:</b>"]
     for i, d in enumerate(multi_txs):
         num = _NUM_EMOJI[i] if i < len(_NUM_EMOJI) else f"{i + 1}."
         tx_type = d.get("tx_type", "expense")
@@ -21,14 +21,14 @@ def build_multi_confirmation_text(multi_txs: list) -> str:
         currency = d.get("currency", "UAH")
         description = d.get("description") or "—"
         account_name = d.get("account_name", "—")
-        cat_name = d.get("category_name") or "Інше"
+        cat_name = d.get("category_name") or "Другое"
         emoji = TYPE_EMOJI.get(tx_type, "💸")
         lines.append(f"\n{num}")
         lines.append(f"— Тип: {emoji} <b>{tx_type}</b>")
-        lines.append(f"💰 Сума: <b>{amount} {currency}</b>")
+        lines.append(f"💰 Сумма: <b>{amount} {currency}</b>")
         lines.append(f"📝 Опис: {description}")
-        lines.append(f"🏦 Рахунок: {account_name}")
-        lines.append(f"🏷 Категорія: {cat_name}")
+        lines.append(f"🏦 Счёт: {account_name}")
+        lines.append(f"🏷 Категория: {cat_name}")
     return "\n".join(lines)
 
 
@@ -41,18 +41,18 @@ def build_confirmation_text(d: dict) -> str:
     account_name = d.get("account_name", "—")
     is_new_cat = d.get("is_new_cat", False)
     cat_display = (
-        f"🆕 {d.get('new_cat_name', '?')} <i>(нова — буде створена)</i>"
+        f"🆕 {d.get('new_cat_name', '?')} <i>(новая — будет создана)</i>"
         if is_new_cat
-        else d.get("category_name", "Без категорії")
+        else d.get("category_name", "Без категории")
     )
     emoji = TYPE_EMOJI.get(tx_type, "💸")
     return (
-        f"📋 <b>Підтвердіть транзакцію:</b>\n\n"
+        f"📋 <b>Подтвердите транзакцию:</b>\n\n"
         f"{emoji} Тип: <b>{tx_type}</b>\n"
-        f"💵 Сума: <b>{amount} {currency}</b>\n"
+        f"💵 Сумма: <b>{amount} {currency}</b>\n"
         f"📝 Опис: {description}\n"
-        f"🏦 Рахунок: {account_name}\n"
-        f"🏷 Категорія: {cat_display}"
+        f"🏦 Счёт: {account_name}\n"
+        f"🏷 Категория: {cat_display}"
     )
 
 

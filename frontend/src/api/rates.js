@@ -34,10 +34,10 @@ export function toUAH(amount, currency, rates) {
 }
 
 export function fmtUAH(amount) {
-  return `${Math.round(amount).toLocaleString('uk-UA')} ₴`
+  return `${Math.round(amount).toLocaleString('ru-RU')} ₴`
 }
 
 export function fmtAmount(amount, currency) {
   const rounded = currency === 'UAH' ? Math.round(amount) : +amount.toFixed(2)
-  return `${rounded.toLocaleString('uk-UA')} ${currency}`
+  return `${rounded.toLocaleString('ru-RU')} ${currency}`
 }

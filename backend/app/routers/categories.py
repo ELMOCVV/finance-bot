@@ -47,7 +47,7 @@ async def update_category(
     )
     category = result.scalar_one_or_none()
     if not category:
-        raise HTTPException(status_code=404, detail="Категорію не знайдено")
+        raise HTTPException(status_code=404, detail="Категория не найдена")
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(category, field, value)
     await db.flush()
@@ -66,5 +66,5 @@ async def delete_category(
     )
     category = result.scalar_one_or_none()
     if not category:
-        raise HTTPException(status_code=404, detail="Категорію не знайдено")
+        raise HTTPException(status_code=404, detail="Категория не найдена")
     await db.delete(category)

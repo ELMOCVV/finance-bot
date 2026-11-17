@@ -52,12 +52,12 @@ export default function Analytics({ userId }) {
   })
 
   const pieTotal = cats.reduce((s, c) => s + (c.total_uah || 0), 0)
-  const pieData  = cats.slice(0, 7).map((c) => ({ name: c.name || 'Інше', value: Math.round(c.total_uah || 0) }))
+  const pieData  = cats.slice(0, 7).map((c) => ({ name: c.name || 'Другое', value: Math.round(c.total_uah || 0) }))
 
   const trendFormatted = trend.map((t) => ({
     month: (t.month || '').slice(5),
-    Доходи:  Math.round(t.total_income  || t.income  || 0),
-    Витрати: Math.round(t.total_expense || t.expense || 0),
+    Доходы:  Math.round(t.total_income  || t.income  || 0),
+    Расходы: Math.round(t.total_expense || t.expense || 0),
   }))
 
   const expenseDelta = prevSummary
@@ -67,7 +67,7 @@ export default function Analytics({ userId }) {
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">Аналітика</div>
+        <div className="page-title">Аналитика</div>
       </div>
 
       {/* Month selector */}
@@ -96,16 +96,16 @@ export default function Analytics({ userId }) {
           <>
             <div className="stats-grid" style={{ marginBottom: 10 }}>
               <div className="stat-card">
-                <div className="stat-label">Доходи</div>
+                <div className="stat-label">Доходы</div>
                 <div className="stat-value income">{fmtUAH(summary?.total_income_uah || 0)}</div>
               </div>
               <div className="stat-card">
-                <div className="stat-label">Витрати</div>
+                <div className="stat-label">Расходы</div>
                 <div className="stat-value expense">{fmtUAH(summary?.total_expense_uah || 0)}</div>
               </div>
             </div>
             <div className="stat-card" style={{ marginBottom: 20 }}>
-              <div className="stat-label">Чистий результат</div>
+              <div className="stat-label">Чистый результат</div>
               <div className={`stat-value ${(summary?.net_uah || 0) >= 0 ? 'income' : 'expense'}`}>
                 {(summary?.net_uah || 0) >= 0 ? '+' : ''}{fmtUAH(summary?.net_uah || 0)}
               </div>
@@ -117,11 +117,11 @@ export default function Analytics({ userId }) {
         {expenseDelta !== null && (
           <div className="compare-strip">
             <div className="compare-card">
-              <div className="compare-label">Минулий місяць</div>
+              <div className="compare-label">Прошлый месяц</div>
               <div className="compare-val">{fmtUAH(prevSummary?.total_expense_uah || 0)}</div>
             </div>
             <div className="compare-card">
-              <div className="compare-label">Різниця</div>
+              <div className="compare-label">Разница</div>
               <div
                 className="compare-val"
                 style={{ color: expenseDelta > 0 ? 'var(--danger)' : 'var(--success)' }}
@@ -136,15 +136,15 @@ export default function Analytics({ userId }) {
         {!trendLoading && trendFormatted.length > 0 && (
           <div className="section">
             <div className="chart-wrap">
-              <div className="chart-title">Доходи / Витрати по місяцях</div>
+              <div className="chart-title">Доходы / Расходы по месяцам</div>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={trendFormatted} margin={{ top: 4, right: 4, bottom: 0, left: -20 }} barCategoryGap="30%">
                   <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
                   <Tooltip content={<BAR_TOOLTIP />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Bar dataKey="Доходи"  fill="#10b981" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Витрати" fill="#f43f5e" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Доходы"  fill="#10b981" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Расходы" fill="#f43f5e" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -155,7 +155,7 @@ export default function Analytics({ userId }) {
         {!catLoading && cats.length > 0 && (
           <div className="section">
             <div className="chart-wrap">
-              <div className="chart-title">Розбивка по категоріях</div>
+              <div className="chart-title">Разбивка по категориям</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                 <PieChart width={110} height={110}>
                   <Pie data={pieData} cx={50} cy={50} innerRadius={28} outerRadius={50} paddingAngle={2} dataKey="value" strokeWidth={0}>
@@ -168,7 +168,7 @@ export default function Analytics({ userId }) {
                     return (
                       <div key={c.category_id || i} className="cat-row">
                         <div className="cat-dot" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                        <span className="cat-name">{c.icon ? `${c.icon} ` : ''}{c.name || 'Інше'}</span>
+                        <span className="cat-name">{c.icon ? `${c.icon} ` : ''}{c.name || 'Другое'}</span>
                         <span className="cat-pct">{pct}%</span>
                         <span className="cat-val">{fmtUAH(c.total_uah || 0)}</span>
                       </div>
@@ -183,7 +183,7 @@ export default function Analytics({ userId }) {
         {!catLoading && cats.length === 0 && (
           <div className="empty-state">
             <div className="empty-icon">📊</div>
-            <div className="empty-text">Немає даних за цей місяць</div>
+            <div className="empty-text">Нет данных за этот месяц</div>
           </div>
         )}
       </div>

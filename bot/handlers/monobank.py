@@ -111,8 +111,8 @@ async def mono_menu(callback: CallbackQuery, db_user: User, state: FSMContext) -
 
     text = (
         "🏦 <b>Monobank</b>\n\n"
-        + ("Ваші підключення:" if connections else "Підключень ще немає.\n"
-           "Підключіть Monobank, щоб автоматично отримувати операції.")
+        + ("Твои подключения:" if connections else "Подключений ещё нет.\n"
+           "Подключи Monobank, чтобы автоматически получать операции.")
     )
     await callback.message.edit_text(text, reply_markup=monobank_menu_keyboard(connections))
     await callback.answer()
@@ -129,9 +129,9 @@ async def mono_view_connection(callback: CallbackQuery, db_user: User) -> None:
         )
         conn = res.scalar_one_or_none()
     if not conn:
-        await callback.answer("Підключення не знайдено")
+        await callback.answer("Подключение не найдено")
         return
-    lines = ["💳 <b>Monobank</b>\n", f"Відстежуються карток: {sum(c.is_tracked for c in conn.cards)}"]
+    lines = ["💳 <b>Monobank</b>\n", f"Отслеживается карт: {sum(c.is_tracked for c in conn.cards)}"]
     await callback.message.edit_text("\n".join(lines), reply_markup=monobank_connection_keyboard(conn_id))
     await callback.answer()
 
@@ -150,7 +150,7 @@ async def mono_disconnect(callback: CallbackQuery, db_user: User, state: FSMCont
         if conn:
             await db.delete(conn)  # cascade прибирає bank_cards, рахунки лишаються
             await db.commit()
-    await callback.answer("✅ Monobank відключено", show_alert=True)
+    await callback.answer("✅ Monobank отключён", show_alert=True)
     await mono_menu(callback, db_user, state)
 
 
@@ -159,18 +159,18 @@ async def mono_disconnect(callback: CallbackQuery, db_user: User, state: FSMCont
 @router.callback_query(F.data == "mono:start")
 async def mono_start(callback: CallbackQuery, state: FSMContext) -> None:
     if not token_crypto.is_configured():
-        await callback.answer("Інтеграцію не налаштовано (TOKEN_ENCRYPTION_KEY)", show_alert=True)
+        await callback.answer("Интеграция не настроена (TOKEN_ENCRYPTION_KEY)", show_alert=True)
         return
     await state.clear()
     await state.set_state(ConnectMonobank.waiting_token)
     await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        "🏦 <b>Підключення Monobank</b>\n\n"
-        "1. Відкрийте <a href=\"https://api.monobank.ua/\">api.monobank.ua</a>\n"
-        "2. Увійдіть через застосунок Monobank\n"
-        "3. Створіть та скопіюйте <b>особистий токен</b>\n"
-        "4. Надішліть його наступним повідомленням\n\n"
-        "🔒 Токен зберігається у зашифрованому вигляді й ніколи не показується.",
+        "🏦 <b>Подключение Monobank</b>\n\n"
+        "1. Открой <a href=\"https://api.monobank.ua/\">api.monobank.ua</a>\n"
+        "2. Войди через приложение Monobank\n"
+        "3. Создай и скопируй <b>личный токен</b>\n"
+        "4. Пришли его следующим сообщением\n\n"
+        "🔒 Токен хранится в зашифрованном виде и никогда не показывается.",
         reply_markup=back_keyboard("mono:menu"),
         disable_web_page_preview=True,
     )
@@ -187,32 +187,32 @@ async def mono_receive_token(message: Message, state: FSMContext) -> None:
         pass
 
     if not token or len(token) < 20:
-        await edit_host(message, state, "❌ Схоже, це некоректний токен. Спробуйте ще раз:",
+        await edit_host(message, state, "❌ Похоже, это некорректный токен. Попробуй ещё раз:",
                         reply_markup=back_keyboard("mono:menu"))
         return
 
-    await edit_host(message, state, "⏳ Перевіряю токен...")
+    await edit_host(message, state, "⏳ Проверяю токен...")
     try:
         client_info = await monobank_service.get_client_info(token)
     except Exception as e:
         logger.warning("Monobank client-info failed: %s", e.__class__.__name__)
         await edit_host(message, state,
-                        "❌ Не вдалось підключитись. Перевірте токен і спробуйте ще раз:",
+                        "❌ Не удалось подключиться. Проверь токен и попробуй ещё раз:",
                         reply_markup=back_keyboard("mono:menu"))
         return
 
     accounts = _accounts_from_client_info(client_info)
     if not accounts:
-        await edit_host(message, state, "❌ У цьому акаунті немає доступних рахунків.",
+        await edit_host(message, state, "❌ В этом аккаунте нет доступных счетов.",
                         reply_markup=back_keyboard("mono:menu"))
         return
 
     await state.update_data(mono_token=token, mono_accounts=accounts, mono_selected=[])
     await state.set_state(ConnectMonobank.selecting_cards)
-    name = client_info.get("name", "клієнт")
+    name = client_info.get("name", "клиент")
     await edit_host(
         message, state,
-        f"✅ Підключено як <b>{name}</b>.\n\nОберіть картки для відстеження:",
+        f"✅ Подключено как <b>{name}</b>.\n\nВыбери карты для отслеживания:",
         reply_markup=mono_cards_keyboard(accounts, set()),
     )
 
@@ -241,7 +241,7 @@ async def mono_cards_done(callback: CallbackQuery, db_user: User, state: FSMCont
     selected = sorted(set(data.get("mono_selected", [])))
     token = data.get("mono_token")
     if not selected:
-        await callback.answer("Оберіть хоча б одну картку", show_alert=True)
+        await callback.answer("Выбери хотя бы одну карту", show_alert=True)
         return
 
     # Створюємо з'єднання (зашифрований токен), картки та дзеркальні рахунки.
@@ -281,8 +281,8 @@ async def mono_cards_done(callback: CallbackQuery, db_user: User, state: FSMCont
     await state.update_data(mono_connection_id=conn_id)
     await state.set_state(ConnectMonobank.selecting_period)
     await callback.message.edit_text(
-        f"✅ Додано рахунків: <b>{len(selected)}</b>.\n\n"
-        "Підтягнути історію операцій?",
+        f"✅ Добавлено счетов: <b>{len(selected)}</b>.\n\n"
+        "Подтянуть историю операций?",
         reply_markup=mono_backfill_keyboard(),
     )
     await callback.answer()
@@ -290,7 +290,7 @@ async def mono_cards_done(callback: CallbackQuery, db_user: User, state: FSMCont
 
 # ── Крок 3: бекфіл + реєстрація webhook ───────────────────────────────────────
 
-_PERIOD_LABELS = {"week": "тиждень", "month": "31 день", "none": ""}
+_PERIOD_LABELS = {"week": "неделю", "month": "31 день", "none": ""}
 _PERIOD_SECONDS = {"week": 7 * 24 * 3600, "month": 31 * 24 * 3600}
 
 
@@ -307,7 +307,7 @@ async def mono_backfill(callback: CallbackQuery, db_user: User, state: FSMContex
     imported = 0
     total_sum = 0.0
     if period in _PERIOD_SECONDS:
-        await callback.message.edit_text("⏳ Імпортую операції (це може зайняти хвилину)...")
+        await callback.message.edit_text("⏳ Импортирую операции (это может занять минуту)...")
         imported, total_sum = await _run_backfill(db_user.id, conn_id, token, period)
 
     # Реєстрація webhook після бекфілу (щоб уникнути подвійного обліку).
@@ -316,14 +316,14 @@ async def mono_backfill(callback: CallbackQuery, db_user: User, state: FSMContex
     lines = []
     if period in _PERIOD_SECONDS:
         lines.append(
-            f"✅ Імпортовано {imported} операцій за {_PERIOD_LABELS[period]} "
-            f"на суму {total_sum:,.2f} ₴"
+            f"✅ Импортировано {imported} операций за {_PERIOD_LABELS[period]} "
+            f"на сумму {total_sum:,.2f} ₴"
         )
     else:
-        lines.append("✅ Monobank підключено.")
-    lines.append("🔔 Нові операції надходитимуть автоматично."
+        lines.append("✅ Monobank подключён.")
+    lines.append("🔔 Новые операции будут приходить автоматически."
                  if webhook_ok else
-                 "⚠️ Не вдалось зареєструвати webhook — нові операції не надходитимуть автоматично.")
+                 "⚠️ Не удалось зарегистрировать webhook — новые операции не будут приходить автоматически.")
 
     await callback.message.edit_text("\n".join(lines), reply_markup=back_keyboard("mono:menu"))
 
@@ -527,7 +527,7 @@ async def _process_statement_item(connection_id: int, mono_account_id: str, item
         user_categories=cats_for_matcher,
     )
     category_id = cat_match.get("matched_id")
-    category_name = cat_match.get("name") or cat_match.get("new_name") or "Без категорії"
+    category_name = cat_match.get("name") or cat_match.get("new_name") or "Без категории"
 
     pid = _register_pending({
         "user_id": user.id,
@@ -545,12 +545,12 @@ async def _process_statement_item(connection_id: int, mono_account_id: str, item
 
     emoji = "➕" if tx_type == "income" else "➖"
     text = (
-        f"🏦 <b>Нова операція Monobank</b>\n\n"
+        f"🏦 <b>Новая операция Monobank</b>\n\n"
         f"{emoji} <b>{parsed['amount']:.2f} {parsed['currency']}</b>\n"
         f"📝 {parsed['description'] or '—'}\n"
         f"🏦 {account.name}\n"
         f"🏷 {category_name}\n\n"
-        f"Додати цю операцію?"
+        f"Добавить эту операцию?"
     )
     from bot.main import bot
     try:
@@ -579,15 +579,15 @@ async def mono_confirm_ok(callback: CallbackQuery, db_user: User) -> None:
     pid = callback.data.split(":")[2]
     p = _pending.get(pid)
     if not p or p.get("user_id") != db_user.id:
-        await callback.answer("Операція застаріла", show_alert=True)
+        await callback.answer("Операция устарела", show_alert=True)
         return
     _pending.pop(pid, None)
     tx = await save_transaction(db_user.id, _pending_to_tx(p))
     await callback.message.edit_text(
-        f"✅ <b>Додано операцію Monobank</b>\n\n"
+        f"✅ <b>Операция Monobank добавлена</b>\n\n"
         f"💵 {tx.amount:.2f} {tx.currency}\n"
         f"📝 {tx.description or '—'}\n"
-        f"🏷 {p.get('category_name', 'Без категорії')}",
+        f"🏷 {p.get('category_name', 'Без категории')}",
         reply_markup=back_keyboard("menu:main"),
     )
     await callback.answer()
@@ -597,7 +597,7 @@ async def mono_confirm_ok(callback: CallbackQuery, db_user: User) -> None:
 async def mono_confirm_skip(callback: CallbackQuery, db_user: User) -> None:
     pid = callback.data.split(":")[2]
     _pending.pop(pid, None)
-    await callback.message.edit_text("🚫 Операцію не враховано.", reply_markup=back_keyboard("menu:main"))
+    await callback.message.edit_text("🚫 Операция не учтена.", reply_markup=back_keyboard("menu:main"))
     await callback.answer()
 
 
@@ -606,7 +606,7 @@ async def mono_confirm_edit(callback: CallbackQuery, db_user: User) -> None:
     pid = callback.data.split(":")[2]
     p = _pending.get(pid)
     if not p or p.get("user_id") != db_user.id:
-        await callback.answer("Операція застаріла", show_alert=True)
+        await callback.answer("Операция устарела", show_alert=True)
         return
     async with AsyncSessionLocal() as db:
         res = await db.execute(
@@ -616,7 +616,7 @@ async def mono_confirm_edit(callback: CallbackQuery, db_user: User) -> None:
         )
         cats = res.scalars().all()
     await callback.message.edit_text(
-        "🏷 Оберіть категорію для операції:",
+        "🏷 Выбери категорию для операции:",
         reply_markup=mono_category_keyboard(cats, pid),
     )
     await callback.answer()
@@ -627,7 +627,7 @@ async def mono_confirm_set_category(callback: CallbackQuery, db_user: User) -> N
     _, _, pid, cat_id = callback.data.split(":")
     p = _pending.get(pid)
     if not p or p.get("user_id") != db_user.id:
-        await callback.answer("Операція застаріла", show_alert=True)
+        await callback.answer("Операция устарела", show_alert=True)
         return
     async with AsyncSessionLocal() as db:
         res = await db.execute(
@@ -635,14 +635,14 @@ async def mono_confirm_set_category(callback: CallbackQuery, db_user: User) -> N
         )
         cat = res.scalar_one_or_none()
     if not cat:
-        await callback.answer("Категорію не знайдено")
+        await callback.answer("Категория не найдена")
         return
     p["category_id"] = cat.id
     p["category_name"] = cat.name
     _pending.pop(pid, None)
     tx = await save_transaction(db_user.id, _pending_to_tx(p))
     await callback.message.edit_text(
-        f"✅ <b>Додано операцію Monobank</b>\n\n"
+        f"✅ <b>Операция Monobank добавлена</b>\n\n"
         f"💵 {tx.amount:.2f} {tx.currency}\n"
         f"📝 {tx.description or '—'}\n"
         f"🏷 {cat.name}",

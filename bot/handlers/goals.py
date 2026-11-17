@@ -18,7 +18,7 @@ async def _show_goals(target, db_user: User, host_mid: int | None = None) -> Non
         result = await db.execute(select(Goal).where(Goal.user_id == db_user.id).order_by(Goal.deadline))
         goals = result.scalars().all()
 
-    text = "🎯 <b>Ваші фінансові цілі:</b>" if goals else "🎯 <b>Цілей поки немає.</b>\nДодайте першу:"
+    text = "🎯 <b>Твои финансовые цели:</b>" if goals else "🎯 <b>Целей пока нет.</b>\nДобавь первую:"
     kb = goals_keyboard(goals)
 
     if isinstance(target, CallbackQuery):
@@ -45,8 +45,8 @@ async def start_add_goal(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AddGoal.waiting_name)
     await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        "🎯 <b>Нова ціль</b>\n\nВведіть назву цілі:\n"
-        "<i>Наприклад: MacBook Pro, Відпустка в Туреччині</i>",
+        "🎯 <b>Новая цель</b>\n\nВведи название цели:\n"
+        "<i>Например: MacBook Pro, Отпуск в Турции</i>",
         reply_markup=back_keyboard("menu:goals"),
     )
     await callback.answer()
@@ -56,11 +56,11 @@ async def start_add_goal(callback: CallbackQuery, state: FSMContext) -> None:
 async def goal_get_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if not name or len(name) > 256:
-        await edit_host(message, state, "🎯 Введіть коректну назву цілі (до 256 символів):", reply_markup=back_keyboard("menu:goals"))
+        await edit_host(message, state, "🎯 Введи корректное название цели (до 256 символов):", reply_markup=back_keyboard("menu:goals"))
         return
     await state.update_data(goal_name=name)
     await state.set_state(AddGoal.waiting_amount)
-    await edit_host(message, state, f"💰 Ціль: <b>{name}</b>\n\nВведіть цільову суму:")
+    await edit_host(message, state, f"💰 Цель: <b>{name}</b>\n\nВведи целевую сумму:")
 
 
 @router.message(AddGoal.waiting_amount)
@@ -69,13 +69,13 @@ async def goal_get_amount(message: Message, state: FSMContext) -> None:
         amount = float((message.text or "").replace(",", ".").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await edit_host(message, state, "💰 Введіть коректне число більше 0:")
+        await edit_host(message, state, "💰 Введи корректное число больше 0:")
         return
     await state.update_data(goal_amount=amount)
     await state.set_state(AddGoal.waiting_deadline)
     await edit_host(
         message, state,
-        f"📅 Введіть дату дедлайну у форматі <b>{DATE_HINT}</b>\n<i>або пропустіть:</i>",
+        f"📅 Введи дату дедлайна в формате <b>{DATE_HINT}</b>\n<i>или пропусти:</i>",
         reply_markup=skip_keyboard("goal:skip_deadline", "cancel:goal"),
     )
 
@@ -90,7 +90,7 @@ async def goal_get_deadline(message: Message, state: FSMContext, db_user: User) 
     try:
         deadline = parse_date((message.text or "").strip())
     except ValueError:
-        await edit_host(message, state, f"📅 Невірний формат. Введіть дату <b>{DATE_HINT}</b> або натисніть «Пропустити»:", reply_markup=skip_keyboard("goal:skip_deadline", "cancel:goal"))
+        await edit_host(message, state, f"📅 Неверный формат. Введи дату <b>{DATE_HINT}</b> или нажми «Пропустить»:", reply_markup=skip_keyboard("goal:skip_deadline", "cancel:goal"))
         return
     await _save_goal(message, state, db_user, deadline=deadline)
 
@@ -111,7 +111,7 @@ async def _save_goal(target, state: FSMContext, db_user: User, deadline) -> None
         await db.commit()
     await state.clear()
     if isinstance(target, CallbackQuery):
-        await target.answer(f"✅ Ціль «{data['goal_name']}» додано!", show_alert=True)
+        await target.answer(f"✅ Цель «{data['goal_name']}» добавлена!", show_alert=True)
     await _show_goals(target, db_user, host_mid=host_mid)
 
 
@@ -133,7 +133,7 @@ async def view_goal(callback: CallbackQuery, db_user: User) -> None:
         g = result.scalar_one_or_none()
 
     if not g:
-        await callback.answer("Ціль не знайдено")
+        await callback.answer("Цель не найдена")
         return
 
     filled = round(g.progress_percent / 10)
@@ -161,7 +161,7 @@ async def goal_del_confirm(callback: CallbackQuery, db_user: User) -> None:
         g = result.scalar_one_or_none()
     name = g.name if g else f"#{goal_id}"
     await callback.message.edit_text(
-        f"⚠️ Видалити ціль «<b>{name}</b>»?\n\nЦе незворотньо.",
+        f"⚠️ Удалить цель «<b>{name}</b>»?\n\nЭто необратимо.",
         reply_markup=confirm_delete_keyboard(
             confirm_cb=f"goal:delete:{goal_id}",
             cancel_cb=f"goal:view:{goal_id}",
@@ -181,5 +181,5 @@ async def goal_delete(callback: CallbackQuery, db_user: User) -> None:
         if goal:
             await db.delete(goal)
             await db.commit()
-    await callback.answer("✅ Ціль видалено")
+    await callback.answer("✅ Цель удалена")
     await _show_goals(callback, db_user)

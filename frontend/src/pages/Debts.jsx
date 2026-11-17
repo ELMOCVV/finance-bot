@@ -13,18 +13,18 @@ function DebtCard({ debt }) {
     <div style={{ ...styles.card, borderTop: `3px solid ${isUrgent ? theme.colors.danger : theme.colors.accent}` }}>
       <div style={styles.cardHeader}>
         <div style={styles.cardName}>{debt.name}</div>
-        {isUrgent && <span style={styles.urgentBadge}>Скоро платіж</span>}
+        {isUrgent && <span style={styles.urgentBadge}>Скоро платёж</span>}
       </div>
 
       <div style={styles.amounts}>
         <div>
-          <div style={styles.amountLabel}>Залишок</div>
+          <div style={styles.amountLabel}>Остаток</div>
           <div style={{ ...styles.amountValue, color: theme.colors.danger }}>
             {debt.remaining_amount.toLocaleString()} {debt.currency}
           </div>
         </div>
         <div>
-          <div style={styles.amountLabel}>Щомісячний платіж</div>
+          <div style={styles.amountLabel}>Ежемесячный платёж</div>
           <div style={styles.amountValue}>{debt.monthly_payment.toLocaleString()} {debt.currency}</div>
         </div>
         <div>
@@ -38,7 +38,7 @@ function DebtCard({ debt }) {
           <span>Погашено: {paidPercent}%</span>
           {debt.next_payment_date && (
             <span style={{ color: isUrgent ? theme.colors.danger : theme.colors.textMuted }}>
-              Наступний платіж: {new Date(debt.next_payment_date).toLocaleDateString('uk-UA')}
+              Следующий платёж: {new Date(debt.next_payment_date).toLocaleDateString('ru-RU')}
             </span>
           )}
         </div>
@@ -67,18 +67,18 @@ export default function Debts({ userId }) {
   return (
     <div>
       <div style={styles.header}>
-        <h1 style={styles.title}>Борги</h1>
+        <h1 style={styles.title}>Долги</h1>
         {debts.length > 0 && (
           <div style={styles.totalLabel}>
-            Загалом: <span style={{ color: theme.colors.danger, fontWeight: '600' }}>{totalRemaining.toLocaleString()} UAH</span>
+            Всего: <span style={{ color: theme.colors.danger, fontWeight: '600' }}>{totalRemaining.toLocaleString()} UAH</span>
           </div>
         )}
       </div>
 
       {loading ? (
-        <div style={styles.loading}>Завантаження...</div>
+        <div style={styles.loading}>Загрузка...</div>
       ) : debts.length === 0 ? (
-        <div style={styles.empty}>У вас немає активних боргів</div>
+        <div style={styles.empty}>У тебя нет активных долгов</div>
       ) : (
         <div style={styles.grid}>
           {debts.map((debt) => <DebtCard key={debt.id} debt={debt} />)}

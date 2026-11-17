@@ -1,7 +1,7 @@
 from datetime import datetime, date
 
 DATE_FORMAT = "%d.%m.%Y"
-DATE_HINT = "ДД.ММ.РРРР (наприклад: 30.10.2026)"
+DATE_HINT = "ДД.ММ.ГГГГ (например: 30.10.2026)"
 
 
 def fmt_date(d: date | None) -> str:

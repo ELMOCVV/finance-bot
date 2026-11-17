@@ -20,7 +20,7 @@ async def _get_user_transaction(transaction_id: int, user_id: int, db: AsyncSess
     )
     tx = result.scalar_one_or_none()
     if not tx:
-        raise HTTPException(status_code=404, detail="Транзакцію не знайдено")
+        raise HTTPException(status_code=404, detail="Транзакция не найдена")
     return tx
 
 
@@ -72,7 +72,7 @@ async def create_transaction(
     )
     account = acc_result.scalar_one_or_none()
     if not account:
-        raise HTTPException(status_code=404, detail="Рахунок не знайдено")
+        raise HTTPException(status_code=404, detail="Счёт не найден")
 
     return await create_transaction_record(
         db,

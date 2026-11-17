@@ -45,7 +45,7 @@ async def get_debt(
     )
     debt = result.scalar_one_or_none()
     if not debt:
-        raise HTTPException(status_code=404, detail="Борг не знайдено")
+        raise HTTPException(status_code=404, detail="Долг не найден")
     return debt
 
 
@@ -61,7 +61,7 @@ async def update_debt(
     )
     debt = result.scalar_one_or_none()
     if not debt:
-        raise HTTPException(status_code=404, detail="Борг не знайдено")
+        raise HTTPException(status_code=404, detail="Долг не найден")
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(debt, field, value)
     await db.flush()
@@ -87,14 +87,14 @@ async def pay_debt(
     )
     debt = result.scalar_one_or_none()
     if not debt:
-        raise HTTPException(status_code=404, detail="Борг не знайдено")
+        raise HTTPException(status_code=404, detail="Долг не найден")
 
     acc_result = await db.execute(
         select(Account).where(and_(Account.id == payload.account_id, Account.user_id == user_id))
     )
     account = acc_result.scalar_one_or_none()
     if not account:
-        raise HTTPException(status_code=404, detail="Рахунок не знайдено")
+        raise HTTPException(status_code=404, detail="Счёт не найден")
 
     amount_uah = await exchange_rate_service.to_uah(payload.amount, account.currency)
     db.add(Transaction(
@@ -105,7 +105,7 @@ async def pay_debt(
         amount=payload.amount,
         currency=account.currency,
         amount_uah=amount_uah,
-        description=f"Погашення боргу: {debt.name}",
+        description=f"Погашение долга: {debt.name}",
         date=datetime.utcnow(),
         source="advisor_action",
     ))
@@ -129,5 +129,5 @@ async def delete_debt(
     )
     debt = result.scalar_one_or_none()
     if not debt:
-        raise HTTPException(status_code=404, detail="Борг не знайдено")
+        raise HTTPException(status_code=404, detail="Долг не найден")
     await db.delete(debt)

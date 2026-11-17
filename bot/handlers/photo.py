@@ -16,7 +16,7 @@ router = Router()
 @router.message(F.photo)
 async def handle_receipt_photo(message: Message, bot: Bot, db_user: User, state: FSMContext) -> None:
     """Розпізнає чек із фото, потім передає в стандартний confirmation-flow."""
-    await message.answer("📸 Розпізнаю чек...")
+    await message.answer("📸 Распознаю чек...")
 
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
@@ -27,15 +27,15 @@ async def handle_receipt_photo(message: Message, bot: Bot, db_user: User, state:
 
     if "error" in parsed:
         await message.answer(
-            f"❌ Не вдалось розпізнати чек: {parsed['error']}\n\n"
-            "Спробуй зробити чіткіше фото на рівній поверхні."
+            f"❌ Не удалось распознать чек: {parsed['error']}\n\n"
+            "Попробуй сделать более чёткое фото на ровной поверхности."
         )
         return
 
     # Якщо Claude повернув список — беремо перший запис
     if isinstance(parsed, list):
         if not parsed:
-            await message.answer("❌ На фото не знайдено транзакцій.")
+            await message.answer("❌ На фото не найдено транзакций.")
             return
         parsed = parsed[0]
 
@@ -70,7 +70,7 @@ async def _parse_and_show_photo(message: Message, db_user: User, parsed: dict, s
 
     if not accounts:
         await message.answer(
-            "⚠️ У вас ще немає рахунків. Спочатку створіть рахунок:",
+            "⚠️ У тебя ещё нет счетов. Сначала создай счёт:",
             reply_markup=accounts_list_keyboard([]),
         )
         return
@@ -108,7 +108,7 @@ async def _parse_and_show_photo(message: Message, db_user: User, parsed: dict, s
         state_data.update(category_id=cat_match["matched_id"], category_name=cat_match["name"], is_new_cat=False)
         keyboard = confirm_transaction_keyboard()
     else:
-        state_data.update(category_id=None, category_name="—", is_new_cat=True, new_cat_name=cat_match.get("new_name", "Інше"))
+        state_data.update(category_id=None, category_name="—", is_new_cat=True, new_cat_name=cat_match.get("new_name", "Другое"))
         keyboard = new_category_keyboard(state_data["new_cat_name"])
 
     await state.update_data(**state_data)

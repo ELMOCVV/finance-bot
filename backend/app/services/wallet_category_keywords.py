@@ -12,23 +12,23 @@
 
 CATEGORY_RULES: list[dict] = [
     {
-        "categories": ["Здоров'я", "Аптека", "Аптеки", "Здоровье"],
+        "categories": ["Здоров'я", "Здоровье", "Аптека", "Аптеки"],
         "keywords": [
             "аптека", "apteka", "pharm", "подорожник", "podorozhnyk", "аптека анц",
             "бажаємо здоров", "медікус", "діла", "синево", "synevo",
         ],
     },
     {
-        "categories": ["Кафе", "Кафе та ресторани", "Ресторани", "Їжа"],
+        "categories": ["Кафе", "Кафе та ресторани", "Кафе и рестораны", "Ресторани", "Рестораны", "Їжа", "Еда"],
         "keywords": [
-            "кафе", "cafe", "coffee", "кава", "кофе", "ресторан", "restaurant",
+            "кафе", "cafe", "coffee", "кава", "кофе", "кофейня", "ресторан", "restaurant",
             "mcdonald", "макдональдс", "kfc", "пузата хата", "puzata", "aroma kava",
             "starbucks", "lviv croissants", "домінос", "dominos", "pizza", "піца",
             "сушія", "sushi", "bolt food", "glovo", "wolt",
         ],
     },
     {
-        "categories": ["Їжа", "Продукти", "Продукты", "Еда"],
+        "categories": ["Їжа", "Еда", "Продукти", "Продукты"],
         "keywords": [
             "атб", "atb", "сільпо", "silpo", "novus", "новус", "metro cash", "метро кеш",
             "ашан", "auchan", "фора", "fora", "варус", "varus", "eko market",
@@ -38,7 +38,7 @@ CATEGORY_RULES: list[dict] = [
         ],
     },
     {
-        "categories": ["Транспорт", "Таксі", "Авто"],
+        "categories": ["Транспорт", "Таксі", "Такси", "Авто"],
         "keywords": [
             "uber", "uklon", "уклон", "bolt", "таксі", "taxi", "метрополітен", "metro kyiv",
             "укрзалізниця", "ukrzaliznytsia", "uz.gov", "wog", "окко", "okko", "socar",
@@ -46,7 +46,7 @@ CATEGORY_RULES: list[dict] = [
         ],
     },
     {
-        "categories": ["Комунальні", "Зв'язок", "Комуналка"],
+        "categories": ["Комунальні", "Коммуналка", "Зв'язок", "Связь"],
         "keywords": [
             "київстар", "kyivstar", "vodafone", "lifecell", "лайфселл", "yasno", "ясно",
             "нафтогаз", "naftogaz", "водоканал", "тенет", "volia", "воля",
@@ -60,7 +60,7 @@ CATEGORY_RULES: list[dict] = [
         ],
     },
     {
-        "categories": ["Розваги", "Підписки"],
+        "categories": ["Розваги", "Развлечения", "Підписки", "Подписки"],
         "keywords": [
             "netflix", "spotify", "youtube", "apple.com", "itunes", "steam", "playstation",
             "кінотеатр", "multiplex", "мультиплекс", "planeta kino", "планета кіно",
@@ -70,4 +70,4 @@ CATEGORY_RULES: list[dict] = [
 
 # Категорія за замовчуванням, якщо жодне правило не спрацювало
 # (стандартна витратна категорія, яку бот створює кожному користувачу).
-FALLBACK_CATEGORY_NAMES: list[str] = ["Інше", "Без категорії", "Другое", "Прочее"]
+FALLBACK_CATEGORY_NAMES: list[str] = ["Інше", "Другое", "Прочее", "Без категорії", "Без категории"]

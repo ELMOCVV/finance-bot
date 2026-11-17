@@ -20,18 +20,18 @@ from bot.utils.fsm_edit import HOST_MID_KEY, edit_host
 
 router = Router()
 
-CONFIRM_WORD = "СКИНУТИ"
+CONFIRM_WORD = "СБРОСИТЬ"
 
 
 def _cancel_kb() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text="❌ Скасувати", callback_data="reset:cancel"))
+    b.row(InlineKeyboardButton(text="❌ Отмена", callback_data="reset:cancel"))
     return b.as_markup()
 
 
 def _menu_kb() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text="🏠 Головне меню", callback_data="menu:main"))
+    b.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu:main"))
     return b.as_markup()
 
 
@@ -44,13 +44,13 @@ async def reset_start(callback: CallbackQuery, db_user: User, state: FSMContext)
     await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     accs = ", ".join(html.escape(a.name) for a in pv.accounts) or "—"
     await callback.message.edit_text(
-        "🧹 <b>Почати з нуля</b>\n\n"
-        f"<b>Буде видалено:</b> {pv.transactions} транзакцій (витрати й доходи) і {pv.transfers} переказів.\n"
-        "<b>Обнулиться:</b> баланси рахунків, «витрачено» в бюджетах, накопичене в цілях.\n"
-        f"<b>Лишиться:</b> рахунки ({accs}), категорії, ліміти бюджетів, цілі, борги, підписки, "
-        "картки Wallet і Monobank.\n\n"
-        "Потім я спитаю, скільки зараз грошей на кожному рахунку.\n\n"
-        f"⚠️ Це не можна скасувати. Щоб підтвердити, напиши <b>{CONFIRM_WORD}</b>.",
+        "🧹 <b>Начать с нуля</b>\n\n"
+        f"❌ <b>Удалится:</b> {pv.transactions} транзакций (расходы и доходы) и {pv.transfers} переводов.\n"
+        "0️⃣ <b>Обнулится:</b> балансы счетов, «потрачено» в бюджетах, накоплено в целях.\n"
+        f"✅ <b>Останется без изменений:</b> счета ({accs}), категории, лимиты бюджетов, цели, долги, подписки, "
+        "карты Wallet и Monobank.\n\n"
+        "Потом я спрошу, сколько сейчас денег на каждом счёте.\n\n"
+        f"⚠️ Это нельзя отменить. Чтобы подтвердить, напиши <b>{CONFIRM_WORD}</b>.",
         reply_markup=_cancel_kb(),
     )
     await callback.answer()
@@ -59,14 +59,14 @@ async def reset_start(callback: CallbackQuery, db_user: User, state: FSMContext)
 @router.callback_query(F.data == "reset:cancel")
 async def reset_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text("Скасовано — нічого не змінено.", reply_markup=_menu_kb())
+    await callback.message.edit_text("Отменено — ничего не изменено.", reply_markup=_menu_kb())
     await callback.answer()
 
 
 @router.message(ResetHistory.waiting_confirm)
 async def reset_confirm(message: Message, db_user: User, state: FSMContext) -> None:
     if (message.text or "").strip().upper() != CONFIRM_WORD:
-        await edit_host(message, state, "Не підтверджено — нічого не змінено.", _menu_kb())
+        await edit_host(message, state, "Не подтверждено — ничего не изменено.", _menu_kb())
         await state.clear()
         return
     async with AsyncSessionLocal() as db:
@@ -77,7 +77,7 @@ async def reset_confirm(message: Message, db_user: User, state: FSMContext) -> N
     from bot.handlers.monobank import drop_user_pending
     drop_user_pending(db_user.id)
     if not pv.accounts:
-        await edit_host(message, state, "✅ Історію скинуто. Рахунків немає — створи їх у ⚙️ Меню → 🏦 Рахунки.", _menu_kb())
+        await edit_host(message, state, "✅ История сброшена. Счетов нет — создай их в ⚙️ Меню → 🏦 Счета.", _menu_kb())
         await state.clear()
         return
     await state.set_state(ResetHistory.waiting_balance)
@@ -94,9 +94,9 @@ async def _ask_next(message: Message, state: FSMContext) -> None:
     left = len(data["r_queue"])
     await edit_host(
         message, state,
-        f"✅ Історію скинуто.\n\n🏦 <b>{html.escape(acc.name)}</b> ({acc.currency})"
-        f"{f' · ще {left - 1}' if left > 1 else ''}\n"
-        f"Скільки зараз грошей на цьому рахунку? Напиши число, напр. <i>12500</i> або <i>350,75</i>:",
+        f"✅ История сброшена.\n\n🏦 <b>{html.escape(acc.name)}</b> ({acc.currency})"
+        f"{f' · ещё {left - 1}' if left > 1 else ''}\n"
+        f"Сколько сейчас денег на этом счёте? Напиши число, напр. <i>12500</i> или <i>350,75</i>:",
         b.as_markup(),
     )
 
@@ -113,7 +113,7 @@ async def _set_balance(message: Message, state: FSMContext, balance: float) -> N
         await state.update_data(r_queue=queue, r_done=done)
         await _ask_next(message, state)
         return
-    await edit_host(message, state, "🚀 <b>Старт!</b> Поточні баланси:\n" + "\n".join(done), _menu_kb())
+    await edit_host(message, state, "🚀 <b>Старт!</b> Текущие балансы:\n" + "\n".join(done), _menu_kb())
     await state.clear()
 
 
@@ -123,7 +123,7 @@ async def reset_balance(message: Message, state: FSMContext) -> None:
     try:
         balance = float(raw)
     except ValueError:
-        await message.answer("Введи число, наприклад <i>12500</i> або <i>350,75</i>:")
+        await message.answer("Введи число, например <i>12500</i> или <i>350,75</i>:")
         return
     await _set_balance(message, state, balance)
 

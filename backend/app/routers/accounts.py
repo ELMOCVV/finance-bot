@@ -18,7 +18,7 @@ async def _get_user_account(account_id: int, user_id: int, db: AsyncSession) -> 
     )
     account = result.scalar_one_or_none()
     if not account:
-        raise HTTPException(status_code=404, detail="Рахунок не знайдено")
+        raise HTTPException(status_code=404, detail="Счёт не найден")
     return account
 
 
@@ -113,7 +113,7 @@ async def adjust_balance(
             amount=amount,
             currency=account.currency,
             amount_uah=amount_uah,
-            description="Коригування балансу",
+            description="Корректировка баланса",
             date=datetime.utcnow(),
             source="advisor_action",
         ))

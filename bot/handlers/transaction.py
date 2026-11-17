@@ -63,13 +63,13 @@ async def _parse_and_show(
 
     if not accounts:
         await message.answer(
-            "⚠️ У вас ще немає рахунків.\nСпочатку створіть рахунок:",
+            "⚠️ У тебя ещё нет счетов.\nСначала создай счёт:",
             reply_markup=accounts_list_keyboard([]),
         )
         await state.clear()
         return
 
-    status_msg = await message.answer("⏳ Аналізую транзакцію...")
+    status_msg = await message.answer("⏳ Анализирую транзакцию...")
     parsed = await claude_service.parse_transaction(text)
 
     # Кілька транзакцій → multi-flow
@@ -79,8 +79,8 @@ async def _parse_and_show(
 
     if "error" in parsed:
         await status_msg.edit_text(
-            f"❌ Не вдалось розпарсити.\n{parsed['error']}\n\n"
-            "<i>Спробуй: «Кава 50 грн»</i>",
+            f"❌ Не удалось разобрать.\n{parsed['error']}\n\n"
+            "<i>Попробуй: «Кофе 50 грн»</i>",
         )
         await state.clear()
         return
@@ -124,7 +124,7 @@ async def _parse_and_show(
         state_data["category_id"] = None
         state_data["category_name"] = "—"
         state_data["is_new_cat"] = True
-        state_data["new_cat_name"] = cat_match.get("new_name", "Інше")
+        state_data["new_cat_name"] = cat_match.get("new_name", "Другое")
         keyboard = new_category_keyboard(state_data["new_cat_name"])
 
     await state.update_data(**state_data)
@@ -145,7 +145,7 @@ async def _parse_and_show_multi(
     """Обробляє кілька транзакцій одночасно."""
     valid_items = [p for p in parsed_list if isinstance(p, dict) and "error" not in p]
     if not valid_items:
-        err = "❌ Не вдалось розпарсити транзакції."
+        err = "❌ Не удалось разобрать транзакции."
         if status_msg:
             await status_msg.edit_text(err)
         else:
@@ -187,7 +187,7 @@ async def _parse_and_show_multi(
             tx_data["category_name"] = cat_match["name"]
         else:
             tx_data["category_id"] = None
-            tx_data["category_name"] = "Інше"
+            tx_data["category_name"] = "Другое"
 
         multi_txs.append(tx_data)
 
@@ -260,7 +260,7 @@ async def confirm_multi_tx(callback: CallbackQuery, db_user: User, state: FSMCon
     data = await state.get_data()
     multi_txs = data.get("multi_txs", [])
     if not multi_txs:
-        await callback.answer("Транзакції не знайдено. Спробуй ще раз.")
+        await callback.answer("Транзакции не найдены. Попробуй ещё раз.")
         return
 
     saved = []
@@ -269,7 +269,7 @@ async def confirm_multi_tx(callback: CallbackQuery, db_user: User, state: FSMCon
         saved.append(tx)
 
     await state.clear()
-    lines = ["✅ <b>Збережено!</b>\n"]
+    lines = ["✅ <b>Сохранено!</b>\n"]
     for tx in saved:
         lines.append(f"• {tx.amount:.2f} {tx.currency} — {tx.description or '—'}")
     await callback.message.edit_text("\n".join(lines), reply_markup=back_keyboard())
@@ -279,7 +279,7 @@ async def confirm_multi_tx(callback: CallbackQuery, db_user: User, state: FSMCon
 @router.callback_query(F.data == "multi:cancel")
 async def cancel_multi_tx(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text("❌ Транзакції скасовано.", reply_markup=back_keyboard())
+    await callback.message.edit_text("❌ Транзакции отменены.", reply_markup=back_keyboard())
     await callback.answer()
 
 
@@ -288,7 +288,7 @@ async def edit_multi_tx_select(callback: CallbackQuery, state: FSMContext) -> No
     data = await state.get_data()
     multi_txs = data.get("multi_txs", [])
     await callback.message.edit_text(
-        "✏️ <b>Яку транзакцію редагуємо?</b>",
+        "✏️ <b>Какую транзакцию редактируем?</b>",
         reply_markup=multi_tx_select_keyboard(multi_txs),
     )
     await callback.answer()
@@ -311,7 +311,7 @@ async def edit_multi_tx_item(callback: CallbackQuery, db_user: User, state: FSMC
     data = await state.get_data()
     multi_txs = data.get("multi_txs", [])
     if idx >= len(multi_txs):
-        await callback.answer("Транзакцію не знайдено")
+        await callback.answer("Транзакция не найдена")
         return
 
     tx = multi_txs[idx]
@@ -325,7 +325,7 @@ async def edit_multi_tx_item(callback: CallbackQuery, db_user: User, state: FSMC
         account_id=tx["account_id"],
         account_name=tx["account_name"],
         category_id=tx.get("category_id"),
-        category_name=tx.get("category_name", "Інше"),
+        category_name=tx.get("category_name", "Другое"),
         is_new_cat=tx.get("is_new_cat", False),
         new_cat_name=tx.get("new_cat_name", ""),
         source=tx.get("source", "bot_text"),
@@ -333,9 +333,9 @@ async def edit_multi_tx_item(callback: CallbackQuery, db_user: User, state: FSMC
         multi_editing_index=idx,
     )
 
-    is_other = not tx.get("category_id") and tx.get("category_name") in ("Інше", "—", None)
+    is_other = not tx.get("category_id") and tx.get("category_name") in ("Другое", "Інше", "—", None)
     await callback.message.edit_text(
-        f"✏️ <b>Редагуємо #{idx + 1}:</b>\n\n" + build_confirmation_text(tx),
+        f"✏️ <b>Редактируем #{idx + 1}:</b>\n\n" + build_confirmation_text(tx),
         reply_markup=edit_transaction_keyboard(show_new_cat=is_other),
     )
     await callback.answer()
@@ -349,12 +349,12 @@ async def edit_multi_tx_item(callback: CallbackQuery, db_user: User, state: FSMC
 async def confirm_tx(callback: CallbackQuery, db_user: User, state: FSMContext) -> None:
     data = await state.get_data()
     if not data or "parsed" not in data:
-        await callback.answer("Транзакцію не знайдено. Спробуй ще раз.")
+        await callback.answer("Транзакция не найдена. Попробуй ещё раз.")
         return
     tx = await save_transaction(db_user.id, data)
     await state.clear()
     await callback.message.edit_text(
-        f"✅ <b>Збережено!</b>\n\n"
+        f"✅ <b>Сохранено!</b>\n\n"
         f"💵 {tx.amount:.2f} {tx.currency} ({tx.amount_uah:.2f} ₴)\n"
         f"📝 {tx.description or '—'}",
         reply_markup=back_keyboard(),
@@ -365,7 +365,7 @@ async def confirm_tx(callback: CallbackQuery, db_user: User, state: FSMContext) 
 @router.callback_query(F.data == "tx:cancel")
 async def cancel_tx(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text("❌ Транзакцію скасовано.", reply_markup=back_keyboard())
+    await callback.message.edit_text("❌ Транзакция отменена.", reply_markup=back_keyboard())
     await callback.answer()
 
 
@@ -375,7 +375,7 @@ async def cancel_tx(callback: CallbackQuery, state: FSMContext) -> None:
 async def newcat_create(callback: CallbackQuery, db_user: User, state: FSMContext) -> None:
     data = await state.get_data()
     if not data or "parsed" not in data:
-        await callback.answer("Сесія застаріла. Введи транзакцію ще раз.")
+        await callback.answer("Сессия устарела. Введи транзакцию ещё раз.")
         return
 
     cat_name = callback.data[len("newcat:create:"):]
@@ -408,7 +408,7 @@ async def newcat_create(callback: CallbackQuery, db_user: User, state: FSMContex
     tx = await save_transaction(db_user.id, data)
     await state.clear()
     await callback.message.edit_text(
-        f"✅ <b>Категорію «{cat_name}» створено і транзакцію збережено!</b>\n\n"
+        f"✅ <b>Категория «{cat_name}» создана, транзакция сохранена!</b>\n\n"
         f"💵 {tx.amount:.2f} {tx.currency}",
         reply_markup=back_keyboard(),
     )
@@ -428,7 +428,7 @@ async def newcat_pick(callback: CallbackQuery, db_user: User, state: FSMContext)
         cats = res.scalars().all()
 
     await callback.message.edit_text(
-        "🏷 Виберіть категорію:",
+        "🏷 Выбери категорию:",
         reply_markup=categories_keyboard(cats, back_cb="txedit:back"),
     )
     await callback.answer()
@@ -441,7 +441,7 @@ async def newcat_pick(callback: CallbackQuery, db_user: User, state: FSMContext)
 @router.callback_query(F.data == "tx:edit")
 async def start_edit(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
-        "✏️ <b>Що редагуємо?</b>",
+        "✏️ <b>Что редактируем?</b>",
         reply_markup=edit_transaction_keyboard(),
     )
     await callback.answer()
@@ -464,7 +464,7 @@ async def edit_back(callback: CallbackQuery, state: FSMContext) -> None:
             "account_id": data.get("account_id"),
             "account_name": data.get("account_name", "—"),
             "category_id": data.get("category_id"),
-            "category_name": data.get("category_name", "Інше"),
+            "category_name": data.get("category_name", "Другое"),
             "is_new_cat": data.get("is_new_cat", False),
             "new_cat_name": data.get("new_cat_name", ""),
         })
@@ -477,7 +477,7 @@ async def edit_back(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if not data or "parsed" not in data:
-        await callback.message.edit_text("Сесія застаріла.", reply_markup=back_keyboard())
+        await callback.message.edit_text("Сессия устарела.", reply_markup=back_keyboard())
         await callback.answer()
         return
     kb = new_category_keyboard(data["new_cat_name"]) if data.get("is_new_cat") else confirm_transaction_keyboard()
@@ -489,7 +489,7 @@ async def edit_back(callback: CallbackQuery, state: FSMContext) -> None:
 async def edit_amount_prompt(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(EditTransaction.editing_amount)
     await callback.message.edit_text(
-        "💵 Введіть нову суму:",
+        "💵 Введи новую сумму:",
         reply_markup=back_keyboard("txedit:back"),
     )
     await callback.answer()
@@ -501,7 +501,7 @@ async def edit_amount_input(message: Message, state: FSMContext) -> None:
         amount = float((message.text or "").replace(",", ".").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await message.answer("Введіть коректне число більше 0:")
+        await message.answer("Введи корректное число больше 0:")
         return
     await state.update_data(amount=amount)
     await state.set_state(None)
@@ -523,7 +523,7 @@ async def edit_amount_input(message: Message, state: FSMContext) -> None:
 async def edit_desc_prompt(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(EditTransaction.editing_description)
     await callback.message.edit_text(
-        "📝 Введіть новий опис:",
+        "📝 Введи новое описание:",
         reply_markup=back_keyboard("txedit:back"),
     )
     await callback.answer()
@@ -561,7 +561,7 @@ async def edit_category_prompt(callback: CallbackQuery, db_user: User, state: FS
         cats = res.scalars().all()
 
     await callback.message.edit_text(
-        "🏷 Виберіть категорію:",
+        "🏷 Выбери категорию:",
         reply_markup=categories_keyboard(cats, back_cb="txedit:back"),
     )
     await callback.answer()
@@ -571,7 +571,7 @@ async def edit_category_prompt(callback: CallbackQuery, db_user: User, state: FS
 async def edit_new_cat_prompt(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(EditTransaction.creating_category_name)
     await callback.message.edit_text(
-        "📝 Введіть назву нової категорії:",
+        "📝 Введи название новой категории:",
         reply_markup=back_keyboard("txedit:back"),
     )
     await callback.answer()
@@ -581,7 +581,7 @@ async def edit_new_cat_prompt(callback: CallbackQuery, state: FSMContext) -> Non
 async def edit_new_cat_input(message: Message, db_user: User, state: FSMContext) -> None:
     cat_name = (message.text or "").strip()[:50]
     if not cat_name:
-        await message.answer("Введіть назву категорії:")
+        await message.answer("Введи название категории:")
         return
 
     data = await state.get_data()
@@ -617,7 +617,7 @@ async def edit_account_prompt(callback: CallbackQuery, db_user: User) -> None:
         res = await db.execute(select(Account).where(Account.user_id == db_user.id))
         accounts = res.scalars().all()
     await callback.message.edit_text(
-        "🏦 Виберіть рахунок:",
+        "🏦 Выбери счёт:",
         reply_markup=tx_account_select_keyboard(accounts),
     )
     await callback.answer()
@@ -632,7 +632,7 @@ async def account_picked_for_tx(callback: CallbackQuery, db_user: User, state: F
         )
         new_acc = res.scalar_one_or_none()
     if not new_acc:
-        await callback.answer("Рахунок не знайдено")
+        await callback.answer("Счёт не найден")
         return
     await state.update_data(account_id=new_acc_id, account_name=new_acc.name)
     await state.set_state(None)
@@ -666,7 +666,7 @@ async def category_picked(callback: CallbackQuery, db_user: User, state: FSMCont
         cat = res.scalar_one_or_none()
 
     if not cat:
-        await callback.answer("Категорію не знайдено")
+        await callback.answer("Категория не найдена")
         return
 
     await state.update_data(
@@ -719,7 +719,7 @@ async def view_transaction(callback: CallbackQuery, db_user: User) -> None:
             cat_name = cat.name if cat else "—"
 
     if not tx:
-        await callback.answer("Транзакцію не знайдено")
+        await callback.answer("Транзакция не найдена")
         return
 
     type_emoji = {"expense": "➖", "income": "➕", "transfer": "🔄", "debt_payment": "💳"}
@@ -727,11 +727,11 @@ async def view_transaction(callback: CallbackQuery, db_user: User) -> None:
     date_str = tx.date.strftime("%d.%m.%Y %H:%M")
     await callback.message.edit_text(
         f"{e} <b>{tx.type.upper()}</b>\n\n"
-        f"💵 Сума: <b>{tx.amount:.2f} {tx.currency}</b> ({tx.amount_uah:.2f} ₴)\n"
-        f"📝 Опис: {tx.description or '—'}\n"
-        f"🏷 Категорія: {cat_name}\n"
+        f"💵 Сумма: <b>{tx.amount:.2f} {tx.currency}</b> ({tx.amount_uah:.2f} ₴)\n"
+        f"📝 Описание: {tx.description or '—'}\n"
+        f"🏷 Категория: {cat_name}\n"
         f"📅 Дата: {date_str}\n"
-        f"📌 Джерело: {tx.source}",
+        f"📌 Источник: {tx.source}",
         reply_markup=transaction_view_keyboard(tx_id),
     )
     await callback.answer()
@@ -750,7 +750,7 @@ async def tx_del_confirm(callback: CallbackQuery, db_user: User) -> None:
         tx = res.scalar_one_or_none()
     label = f"{tx.amount:.0f} {tx.currency} — {tx.description or '?'}" if tx else f"#{tx_id}"
     await callback.message.edit_text(
-        f"⚠️ Видалити транзакцію «<b>{label}</b>»?\n\nЦе незворотньо.",
+        f"⚠️ Удалить транзакцию «<b>{label}</b>»?\n\nЭто необратимо.",
         reply_markup=confirm_delete_keyboard(
             confirm_cb=f"tx:delete:{tx_id}",
             cancel_cb=f"tx:view:{tx_id}",
@@ -780,8 +780,8 @@ async def tx_delete(callback: CallbackQuery, db_user: User) -> None:
             await db.delete(tx)
             await db.commit()
 
-    await callback.answer("✅ Транзакцію видалено")
+    await callback.answer("✅ Транзакция удалена")
     await callback.message.edit_text(
-        "✅ Транзакцію видалено.",
+        "✅ Транзакция удалена.",
         reply_markup=back_keyboard("menu:transactions"),
     )

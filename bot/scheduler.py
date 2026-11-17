@@ -57,15 +57,15 @@ async def check_subscriptions(bot) -> None:
             # Формуємо текст нагадування
             day_str = f"{sub.day_of_month}-го"
             text = (
-                f"⚠️ <b>Нагадування про підписку</b>\n\n"
+                f"⚠️ <b>Напоминание о подписке</b>\n\n"
                 f"🔔 {sub.name}\n"
-                f"💸 {sub.amount:.2f} {sub.currency} списується завтра ({day_str})\n"
+                f"💸 {sub.amount:.2f} {sub.currency} спишется завтра ({day_str})\n"
             )
 
             if sub.account_id:
                 account = await db.get(Account, sub.account_id)
                 if account:
-                    balance_info = f"🏦 Рахунок «{account.name}»: {account.balance:.2f} {account.currency}"
+                    balance_info = f"🏦 Счёт «{account.name}»: {account.balance:.2f} {account.currency}"
                     if account.balance < sub.amount:
                         balance_info += " — ⚠️ можливо варто поповнити!"
                     text += balance_info

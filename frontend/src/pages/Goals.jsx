@@ -15,7 +15,7 @@ function GoalCard({ goal }) {
     <div style={{ ...styles.card, opacity: isCompleted ? 0.85 : 1 }}>
       <div style={styles.cardHeader}>
         <div style={styles.cardName}>{goal.name}</div>
-        {isCompleted && <span style={styles.doneBadge}>Виконано</span>}
+        {isCompleted && <span style={styles.doneBadge}>Выполнено</span>}
       </div>
 
       <div style={styles.amounts}>
@@ -34,7 +34,7 @@ function GoalCard({ goal }) {
         <span style={styles.pct}>{pct}%</span>
         {daysLeft !== null && (
           <span style={{ color: daysLeft < 30 ? theme.colors.warning : theme.colors.textMuted, fontSize: theme.fontSizes.xs }}>
-            {daysLeft > 0 ? `${daysLeft} днів` : 'Термін минув'}
+            {daysLeft > 0 ? `${daysLeft} дн.` : 'Срок истёк'}
           </span>
         )}
       </div>
@@ -56,12 +56,12 @@ export default function Goals({ userId }) {
 
   return (
     <div>
-      <h1 style={styles.title}>Фінансові цілі</h1>
+      <h1 style={styles.title}>Финансовые цели</h1>
 
       {loading ? (
-        <div style={styles.loading}>Завантаження...</div>
+        <div style={styles.loading}>Загрузка...</div>
       ) : goals.length === 0 ? (
-        <div style={styles.empty}>У вас ще немає фінансових цілей</div>
+        <div style={styles.empty}>У тебя ещё нет финансовых целей</div>
       ) : (
         <div style={styles.grid}>
           {goals.map((goal) => <GoalCard key={goal.id} goal={goal} />)}

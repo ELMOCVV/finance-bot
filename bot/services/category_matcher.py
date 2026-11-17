@@ -25,7 +25,7 @@ async def match_category(
     Повертає {"matched_id": int, "name": str} або {"new_name": str}.
     """
     if not user_categories:
-        return {"new_name": hint or "Інше"}
+        return {"new_name": hint or "Другое"}
 
     # Швидкий пошук по ключовому слову (без API)
     hint_lower = (hint or "").lower()
@@ -39,15 +39,15 @@ async def match_category(
 
     # Claude Haiku для розумного підбору (швидко і дешево)
     if not settings.ANTHROPIC_API_KEY:
-        return {"new_name": hint or "Інше"}
+        return {"new_name": hint or "Другое"}
 
     cats_str = "\n".join(f'id={c["id"]}: {c["name"]}' for c in user_categories)
     prompt = (
-        f'Транзакція ({tx_type}): "{description}". Підказка: "{hint}".\n'
-        f'Категорії користувача:\n{cats_str}\n\n'
-        f'Обери найближчу категорію або запропонуй нову.\n'
-        f'Відповідь ТІЛЬКИ JSON (без тексту):\n'
-        f'{{"matched_id": <число>}} або {{"new_name": "<назва>"}}'
+        f'Транзакция ({tx_type}): "{description}". Подсказка: "{hint}".\n'
+        f'Категории пользователя:\n{cats_str}\n\n'
+        f'Выбери самую подходящую категорию или предложи новую (название на русском).\n'
+        f'Ответ ТОЛЬКО JSON (без текста):\n'
+        f'{{"matched_id": <число>}} или {{"new_name": "<название>"}}'
     )
 
     try:
@@ -65,7 +65,7 @@ async def match_category(
             cat = next((c for c in user_categories if c["id"] == int(result["matched_id"])), None)
             if cat:
                 return {"matched_id": cat["id"], "name": cat["name"]}
-        return {"new_name": result.get("new_name") or hint or "Інше"}
+        return {"new_name": result.get("new_name") or hint or "Другое"}
     except Exception as e:
         logger.warning("Category matching error: %s", e)
-        return {"new_name": hint or "Інше"}
+        return {"new_name": hint or "Другое"}

@@ -29,15 +29,15 @@ async def _render_account_view(callback: CallbackQuery, db_user: User, acc_id: i
     """Відображає деталі рахунку — спільна функція для view і після збереження."""
     acc = await _get_account(db_user, acc_id)
     if not acc:
-        await callback.answer("Рахунок не знайдено")
+        await callback.answer("Счёт не найден")
         return
     flag = currency_flag(acc.currency)
-    star = " ⭐ (за замовч.)" if acc.is_default else ""
+    star = " ⭐ (по умолч.)" if acc.is_default else ""
     kw = ", ".join(acc.keywords) if acc.keywords else "—"
     await callback.message.edit_text(
         f"{flag} <b>{acc.name}</b>{star}\n\n"
         f"💵 Баланс: <b>{acc.balance:.2f} {acc.currency}</b>\n"
-        f"🔑 Ключові слова: {kw}",
+        f"🔑 Ключевые слова: {kw}",
         reply_markup=account_view_keyboard(acc_id),
     )
     await callback.answer()
@@ -48,7 +48,7 @@ async def _show_accounts(target, db_user: User, host_mid: int | None = None) -> 
         result = await db.execute(select(Account).where(Account.user_id == db_user.id))
         accounts = result.scalars().all()
 
-    text = "🏦 <b>Ваші рахунки:</b>" if accounts else "🏦 <b>Рахунків поки немає.</b>\nДодайте перший:"
+    text = "🏦 <b>Твои счета:</b>" if accounts else "🏦 <b>Счетов пока нет.</b>\nДобавь первый:"
     kb = accounts_list_keyboard(accounts)
 
     if isinstance(target, CallbackQuery):
@@ -77,8 +77,8 @@ async def start_add_account(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(CreateAccount.waiting_name)
     await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        "🏦 <b>Новий рахунок</b>\n\nВведіть назву рахунку:\n"
-        "<i>Наприклад: Картка ПриватБанк, Готівка, USDT-гаманець</i>",
+        "🏦 <b>Новый счёт</b>\n\nВведи название счёта:\n"
+        "<i>Например: Карта ПриватБанк, Наличные, USDT-кошелёк</i>",
         reply_markup=back_keyboard("menu:accounts"),
     )
     await callback.answer()
@@ -88,11 +88,11 @@ async def start_add_account(callback: CallbackQuery, state: FSMContext) -> None:
 async def account_get_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if not name or len(name) > 128:
-        await edit_host(message, state, "🏦 Введіть коректну назву (до 128 символів):", reply_markup=back_keyboard("menu:accounts"))
+        await edit_host(message, state, "🏦 Введи корректное название (до 128 символов):", reply_markup=back_keyboard("menu:accounts"))
         return
     await state.update_data(acc_name=name)
     await state.set_state(CreateAccount.waiting_currency)
-    await edit_host(message, state, "💱 Виберіть валюту рахунку:", reply_markup=currency_keyboard())
+    await edit_host(message, state, "💱 Выбери валюту счёта:", reply_markup=currency_keyboard())
 
 
 # ── Створення: крок 2 — валюта ────────────────────────────────────────────────
@@ -103,8 +103,8 @@ async def account_get_currency(callback: CallbackQuery, state: FSMContext) -> No
     await state.update_data(acc_currency=currency)
     await state.set_state(CreateAccount.waiting_balance)
     await callback.message.edit_text(
-        f"💵 Введіть поточний баланс рахунку ({currency}):\n"
-        "<i>Введіть 0 якщо рахунок порожній</i>",
+        f"💵 Введи текущий баланс счёта ({currency}):\n"
+        "<i>Введи 0, если счёт пустой</i>",
         reply_markup=back_keyboard("menu:accounts"),
     )
     await callback.answer()
@@ -118,7 +118,7 @@ async def account_get_balance(message: Message, state: FSMContext, db_user: User
         balance = float((message.text or "").replace(",", ".").strip())
         assert balance >= 0
     except (ValueError, AssertionError):
-        await edit_host(message, state, "💵 Введіть коректне число ≥ 0:")
+        await edit_host(message, state, "💵 Введи корректное число ≥ 0:")
         return
 
     data = await state.get_data()
@@ -142,7 +142,7 @@ async def account_get_balance(message: Message, state: FSMContext, db_user: User
         await db.refresh(new_acc)
 
     await state.clear()
-    text = f"✅ Рахунок «<b>{acc_name}</b>» створено!\n💵 Баланс: {balance:.2f} {currency}"
+    text = f"✅ Счёт «<b>{acc_name}</b>» создан!\n💵 Баланс: {balance:.2f} {currency}"
     if host_mid:
         try:
             await message.bot.edit_message_text(text, chat_id=message.chat.id, message_id=host_mid, reply_markup=back_keyboard("menu:accounts"), parse_mode="HTML")
@@ -173,13 +173,13 @@ async def show_edit_menu(callback: CallbackQuery, db_user: User) -> None:
     acc_id = int(callback.data.split(":")[2])
     acc = await _get_account(db_user, acc_id)
     if not acc:
-        await callback.answer("Рахунок не знайдено")
+        await callback.answer("Счёт не найден")
         return
     flag = currency_flag(acc.currency)
     await callback.message.edit_text(
-        f"✏️ <b>Редагування: {flag} {acc.name}</b>\n\n"
+        f"✏️ <b>Редактирование: {flag} {acc.name}</b>\n\n"
         f"💵 Баланс: {acc.balance:.2f} {acc.currency}\n\n"
-        "Що змінити?",
+        "Что изменить?",
         reply_markup=edit_account_keyboard(acc_id, is_default=acc.is_default),
     )
     await callback.answer()
@@ -192,12 +192,12 @@ async def edit_name_prompt(callback: CallbackQuery, state: FSMContext, db_user: 
     acc_id = int(callback.data.split(":")[2])
     acc = await _get_account(db_user, acc_id)
     if not acc:
-        await callback.answer("Рахунок не знайдено")
+        await callback.answer("Счёт не найден")
         return
     await state.set_state(EditAccount.waiting_name)
     await state.update_data(edit_acc_id=acc_id, edit_old_name=acc.name, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        f"📝 Поточна назва: <b>«{acc.name}»</b>\n\nВведіть нову назву:",
+        f"📝 Текущее название: <b>«{acc.name}»</b>\n\nВведи новое название:",
         reply_markup=back_keyboard(f"acc:edit:{acc_id}"),
     )
     await callback.answer()
@@ -207,7 +207,7 @@ async def edit_name_prompt(callback: CallbackQuery, state: FSMContext, db_user: 
 async def edit_name_input(message: Message, state: FSMContext) -> None:
     new_name = (message.text or "").strip()
     if not new_name or len(new_name) > 128:
-        await edit_host(message, state, "📝 Введіть коректну назву (до 128 символів):")
+        await edit_host(message, state, "📝 Введи корректное название (до 128 символов):")
         return
     data = await state.get_data()
     await state.update_data(edit_new_name=new_name)
@@ -215,7 +215,7 @@ async def edit_name_input(message: Message, state: FSMContext) -> None:
     old_name = data["edit_old_name"]
     await edit_host(
         message, state,
-        f"📝 Змінити назву\nЗ: <b>«{old_name}»</b>\nНа: <b>«{new_name}»</b>",
+        f"📝 Изменить название\nС: <b>«{old_name}»</b>\nНа: <b>«{new_name}»</b>",
         reply_markup=confirm_edit_keyboard(confirm_cb="acc:confirm_name", cancel_cb=f"acc:view:{acc_id}"),
     )
 
@@ -226,7 +226,7 @@ async def confirm_name(callback: CallbackQuery, state: FSMContext, db_user: User
     acc_id = data.get("edit_acc_id")
     new_name = data.get("edit_new_name")
     if not acc_id or not new_name:
-        await callback.answer("Сесія застаріла, спробуй ще раз")
+        await callback.answer("Сессия устарела, попробуй ещё раз")
         return
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -238,7 +238,7 @@ async def confirm_name(callback: CallbackQuery, state: FSMContext, db_user: User
             acc.keywords = [new_name.lower()]
             await db.commit()
     await state.clear()
-    await callback.answer("✅ Назву змінено!")
+    await callback.answer("✅ Название изменено!")
     await _render_account_view(callback, db_user, acc_id)
 
 
@@ -249,13 +249,13 @@ async def edit_balance_prompt(callback: CallbackQuery, state: FSMContext, db_use
     acc_id = int(callback.data.split(":")[2])
     acc = await _get_account(db_user, acc_id)
     if not acc:
-        await callback.answer("Рахунок не знайдено")
+        await callback.answer("Счёт не найден")
         return
     await state.set_state(EditAccount.waiting_balance)
     await state.update_data(edit_acc_id=acc_id, edit_old_balance=acc.balance, edit_currency=acc.currency, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        f"💵 Поточний баланс: <b>{acc.balance:.2f} {acc.currency}</b>\n\n"
-        "Введіть новий баланс:",
+        f"💵 Текущий баланс: <b>{acc.balance:.2f} {acc.currency}</b>\n\n"
+        "Введи новый баланс:",
         reply_markup=back_keyboard(f"acc:edit:{acc_id}"),
     )
     await callback.answer()
@@ -267,7 +267,7 @@ async def edit_balance_input(message: Message, state: FSMContext) -> None:
         new_balance = float((message.text or "").replace(",", ".").strip())
         assert new_balance >= 0
     except (ValueError, AssertionError):
-        await edit_host(message, state, "💵 Введіть коректне число ≥ 0:")
+        await edit_host(message, state, "💵 Введи корректное число ≥ 0:")
         return
     data = await state.get_data()
     await state.update_data(edit_new_balance=new_balance)
@@ -276,7 +276,7 @@ async def edit_balance_input(message: Message, state: FSMContext) -> None:
     currency = data["edit_currency"]
     await edit_host(
         message, state,
-        f"💵 Змінити баланс\nЗ: <b>{old_balance:.2f} {currency}</b>\nНа: <b>{new_balance:.2f} {currency}</b>",
+        f"💵 Изменить баланс\nС: <b>{old_balance:.2f} {currency}</b>\nНа: <b>{new_balance:.2f} {currency}</b>",
         reply_markup=confirm_edit_keyboard(confirm_cb="acc:confirm_bal", cancel_cb=f"acc:view:{acc_id}"),
     )
 
@@ -287,7 +287,7 @@ async def confirm_balance(callback: CallbackQuery, state: FSMContext, db_user: U
     acc_id = data.get("edit_acc_id")
     new_balance = data.get("edit_new_balance")
     if acc_id is None or new_balance is None:
-        await callback.answer("Сесія застаріла, спробуй ще раз")
+        await callback.answer("Сессия устарела, попробуй ещё раз")
         return
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -298,7 +298,7 @@ async def confirm_balance(callback: CallbackQuery, state: FSMContext, db_user: U
             acc.balance = new_balance
             await db.commit()
     await state.clear()
-    await callback.answer("✅ Баланс змінено!")
+    await callback.answer("✅ Баланс изменён!")
     await _render_account_view(callback, db_user, acc_id)
 
 
@@ -316,7 +316,7 @@ async def set_default_account(callback: CallbackQuery, db_user: User) -> None:
             if acc.id == acc_id:
                 target_name = acc.name
         await db.commit()
-    await callback.answer(f"✅ Рахунок «{target_name}» тепер основний!", show_alert=True)
+    await callback.answer(f"✅ Счёт «{target_name}» теперь основной!", show_alert=True)
     await _render_account_view(callback, db_user, acc_id)
 
 
@@ -328,8 +328,8 @@ async def acc_del_confirm(callback: CallbackQuery, db_user: User) -> None:
     acc = await _get_account(db_user, acc_id)
     name = acc.name if acc else f"#{acc_id}"
     await callback.message.edit_text(
-        f"⚠️ Видалити рахунок «<b>{name}</b>»?\n\n"
-        "Всі транзакції по цьому рахунку залишаться в базі даних.",
+        f"⚠️ Удалить счёт «<b>{name}</b>»?\n\n"
+        "Все транзакции по этому счёту останутся в базе данных.",
         reply_markup=confirm_delete_keyboard(
             confirm_cb=f"acc:delete:{acc_id}",
             cancel_cb=f"acc:view:{acc_id}",
@@ -349,5 +349,5 @@ async def acc_delete(callback: CallbackQuery, db_user: User) -> None:
         if acc:
             await db.delete(acc)
             await db.commit()
-    await callback.answer("✅ Рахунок видалено")
+    await callback.answer("✅ Счёт удалён")
     await _show_accounts(callback, db_user)

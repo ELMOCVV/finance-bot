@@ -4,17 +4,17 @@ import { fetchTransactions } from '../api/queries'
 import { SkeletonList } from '../components/Skeleton'
 
 const TX_ICONS  = { expense: '➖', income: '➕', transfer: '🔄', debt_payment: '💳' }
-const TX_LABELS = { expense: 'Витрата', income: 'Дохід', transfer: 'Переказ', debt_payment: 'Борг' }
+const TX_LABELS = { expense: 'Расход', income: 'Доход', transfer: 'Перевод', debt_payment: 'Долг' }
 const FILTERS = [
   { key: '', label: 'Все' },
-  { key: 'expense', label: 'Витрата' },
-  { key: 'income', label: 'Дохід' },
-  { key: 'transfer', label: 'Переказ' },
+  { key: 'expense', label: 'Расход' },
+  { key: 'income', label: 'Доход' },
+  { key: 'transfer', label: 'Перевод' },
 ]
 
 function formatDate(dateStr) {
   const d = new Date(dateStr)
-  return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' })
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 function groupByDate(txns) {
@@ -49,7 +49,7 @@ export default function Transactions({ userId }) {
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">Транзакції</div>
+        <div className="page-title">Транзакции</div>
       </div>
 
       <div className="filter-row">
@@ -68,7 +68,7 @@ export default function Transactions({ userId }) {
         <input
           className="search-input"
           type="text"
-          placeholder="Пошук по опису..."
+          placeholder="Поиск по описанию..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -77,12 +77,12 @@ export default function Transactions({ userId }) {
       {isLoading ? (
         <SkeletonList rows={6} />
       ) : isError ? (
-        <div className="error-msg">Помилка завантаження транзакцій</div>
+        <div className="error-msg">Ошибка загрузки транзакций</div>
       ) : groups.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">💸</div>
           <div className="empty-text">
-            {search ? 'Нічого не знайдено' : 'Транзакцій ще немає.\nДодай першу через бота!'}
+            {search ? 'Ничего не найдено' : 'Транзакций ещё нет.\nДобавь первую через бота!'}
           </div>
         </div>
       ) : (
@@ -95,15 +95,15 @@ export default function Transactions({ userId }) {
                   {TX_ICONS[tx.type] || '💸'}
                 </div>
                 <div className="tx-body">
-                  <div className="tx-desc">{tx.description || TX_LABELS[tx.type] || 'Транзакція'}</div>
+                  <div className="tx-desc">{tx.description || TX_LABELS[tx.type] || 'Транзакция'}</div>
                   <div className="tx-meta">
-                    {tx.currency !== 'UAH' && `${tx.amount.toLocaleString('uk-UA')} ${tx.currency} · `}
-                    {new Date(tx.date).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                    {tx.currency !== 'UAH' && `${tx.amount.toLocaleString('ru-RU')} ${tx.currency} · `}
+                    {new Date(tx.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
                 <div className={`tx-amount ${tx.type}`}>
                   {tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}
-                  {Math.round(tx.amount_uah || tx.amount).toLocaleString('uk-UA')} ₴
+                  {Math.round(tx.amount_uah || tx.amount).toLocaleString('ru-RU')} ₴
                 </div>
               </div>
             ))}

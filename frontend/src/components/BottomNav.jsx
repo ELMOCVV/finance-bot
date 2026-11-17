@@ -1,10 +1,10 @@
 import { House, List, ChartBar, Bank } from '@phosphor-icons/react'
 
 const TABS = [
-  { id: 'dashboard',    label: 'Головна',   Icon: House },
-  { id: 'transactions', label: 'Транзакції', Icon: List },
-  { id: 'analytics',   label: 'Аналітика', Icon: ChartBar },
-  { id: 'accounts',    label: 'Рахунки',   Icon: Bank },
+  { id: 'dashboard',    label: 'Главная',   Icon: House },
+  { id: 'transactions', label: 'Транзакции', Icon: List },
+  { id: 'analytics',   label: 'Аналитика', Icon: ChartBar },
+  { id: 'accounts',    label: 'Счета',   Icon: Bank },
 ]
 
 export function BottomNav({ active, onChange }) {

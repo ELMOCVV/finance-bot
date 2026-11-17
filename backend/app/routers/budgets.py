@@ -39,7 +39,7 @@ async def create_budget(
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Бюджет для цієї категорії вже існує")
+        raise HTTPException(status_code=409, detail="Бюджет для этой категории уже существует")
 
     budget = Budget(user_id=user_id, **payload.model_dump())
     db.add(budget)
@@ -60,7 +60,7 @@ async def update_budget(
     )
     budget = result.scalar_one_or_none()
     if not budget:
-        raise HTTPException(status_code=404, detail="Бюджет не знайдено")
+        raise HTTPException(status_code=404, detail="Бюджет не найден")
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(budget, field, value)
     await db.flush()
@@ -79,5 +79,5 @@ async def delete_budget(
     )
     budget = result.scalar_one_or_none()
     if not budget:
-        raise HTTPException(status_code=404, detail="Бюджет не знайдено")
+        raise HTTPException(status_code=404, detail="Бюджет не найден")
     await db.delete(budget)

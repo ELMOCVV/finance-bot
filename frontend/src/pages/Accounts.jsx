@@ -40,30 +40,30 @@ export default function Accounts({ userId }) {
       setForm(DEFAULTS)
       setErr('')
     },
-    onError: (e) => setErr(e?.response?.data?.detail || 'Помилка створення рахунку'),
+    onError: (e) => setErr(e?.response?.data?.detail || 'Ошибка создания счёта'),
   })
 
   function handleSubmit(e) {
     e.preventDefault()
     setErr('')
-    if (!form.name.trim()) return setErr('Введіть назву рахунку')
+    if (!form.name.trim()) return setErr('Введи название счёта')
     addAccount()
   }
 
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">Рахунки</div>
+        <div className="page-title">Счета</div>
       </div>
 
       <div className="page-content" style={{ paddingTop: 0 }}>
         {/* Total */}
         {accounts.length > 0 && (
           <div className="card-hero" style={{ marginBottom: 20 }}>
-            <div className="balance-label">Загальний баланс</div>
+            <div className="balance-label">Общий баланс</div>
             <div className="balance-amount">~{fmtUAH(totalUAH)}</div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
-              {accounts.length} {accounts.length === 1 ? 'рахунок' : accounts.length < 5 ? 'рахунки' : 'рахунків'}
+              {accounts.length} {accounts.length === 1 ? 'счёт' : accounts.length < 5 ? 'счёта' : 'счетов'}
             </div>
           </div>
         )}
@@ -72,11 +72,11 @@ export default function Accounts({ userId }) {
         {isLoading ? (
           <SkeletonList rows={3} />
         ) : isError ? (
-          <div className="error-msg">Помилка завантаження рахунків</div>
+          <div className="error-msg">Ошибка загрузки счетов</div>
         ) : accounts.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">🏦</div>
-            <div className="empty-text">Рахунків ще немає.<br />Додайте перший!</div>
+            <div className="empty-text">Счетов ещё нет.<br />Добавь первый!</div>
           </div>
         ) : (
           accounts.map((acc) => {
@@ -91,7 +91,7 @@ export default function Accounts({ userId }) {
                     {approxUAH !== null && ` · ~${fmtUAH(approxUAH)}`}
                   </div>
                 </div>
-                {acc.is_default && <div className="acc-manage-badge">Основний</div>}
+                {acc.is_default && <div className="acc-manage-badge">Основной</div>}
               </div>
             )
           })
@@ -107,14 +107,14 @@ export default function Accounts({ userId }) {
       {showModal && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
           <form className="sheet" onSubmit={handleSubmit}>
-            <div className="sheet-title">Новий рахунок</div>
+            <div className="sheet-title">Новый счёт</div>
 
             <div className="form-field">
-              <label className="form-label">Назва</label>
+              <label className="form-label">Название</label>
               <input
                 className="form-input"
                 type="text"
-                placeholder="Моно, Приват, Готівка..."
+                placeholder="Моно, Приват, Наличные..."
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 autoFocus
@@ -139,7 +139,7 @@ export default function Accounts({ userId }) {
             </div>
 
             <div className="form-field">
-              <label className="form-label">Початковий баланс</label>
+              <label className="form-label">Начальный баланс</label>
               <input
                 className="form-input"
                 type="number"
@@ -159,7 +159,7 @@ export default function Accounts({ userId }) {
                   checked={form.is_default}
                   onChange={(e) => setForm({ ...form, is_default: e.target.checked })}
                 />
-                <label htmlFor="isDefault" style={{ cursor: 'pointer' }}>Зробити основним</label>
+                <label htmlFor="isDefault" style={{ cursor: 'pointer' }}>Сделать основным</label>
               </div>
             </div>
 
@@ -171,10 +171,10 @@ export default function Accounts({ userId }) {
                 className="btn secondary full"
                 onClick={() => { setShowModal(false); setErr('') }}
               >
-                Скасувати
+                Отмена
               </button>
               <button type="submit" className="btn primary full" disabled={isPending}>
-                {isPending ? 'Збереження...' : 'Додати'}
+                {isPending ? 'Сохранение...' : 'Добавить'}
               </button>
             </div>
           </form>

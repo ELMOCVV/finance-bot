@@ -34,11 +34,11 @@ async def _show_budgets(target, db_user: User, month: str | None = None, host_mi
 
     if not budgets:
         text = (
-            f"📋 <b>Бюджети за {month}</b>\n\n"
-            "Бюджетів ще немає. Натисніть «➕ Додати бюджет»:"
+            f"📋 <b>Бюджеты за {month}</b>\n\n"
+            "Бюджетов ещё нет. Нажми «➕ Добавить бюджет»:"
         )
     else:
-        lines = [f"📋 <b>Бюджети за {month}:</b>"]
+        lines = [f"📋 <b>Бюджеты за {month}:</b>"]
         for b_item in budgets:
             pct = round(b_item["spent"] / b_item["limit"] * 100) if b_item["limit"] else 0
             bar = _bar(b_item["spent"], b_item["limit"])
@@ -82,12 +82,12 @@ async def start_add_budget(callback: CallbackQuery, state: FSMContext, db_user: 
         categories = res.scalars().all()
 
     if not categories:
-        await callback.answer("Спочатку додайте категорії витрат через /start!", show_alert=True)
+        await callback.answer("Сначала добавь категории расходов через /start!", show_alert=True)
         return
 
     await state.set_state(CreateBudget.waiting_category)
     await callback.message.edit_text(
-        "📋 <b>Новий бюджет</b>\n\nВиберіть категорію витрат:",
+        "📋 <b>Новый бюджет</b>\n\nВыбери категорию расходов:",
         reply_markup=budget_categories_keyboard(categories),
     )
     await callback.answer()
@@ -103,14 +103,14 @@ async def budget_get_category(callback: CallbackQuery, state: FSMContext, db_use
         cat = res.scalar_one_or_none()
 
     if not cat:
-        await callback.answer("Категорію не знайдено")
+        await callback.answer("Категория не найдена")
         return
 
     await state.update_data(budget_cat_id=cat_id, budget_cat_name=cat.name, budget_cat_icon=cat.icon or "", **{HOST_MID_KEY: callback.message.message_id})
     await state.set_state(CreateBudget.waiting_amount)
     await callback.message.edit_text(
         f"📋 Бюджет: {cat.icon or ''} <b>{cat.name}</b>\n\n"
-        "Введіть ліміт витрат на місяць (UAH):",
+        "Введи лимит расходов на месяц (UAH):",
         reply_markup=back_keyboard("budgets:add"),
     )
     await callback.answer()
@@ -124,7 +124,7 @@ async def budget_get_amount(message: Message, state: FSMContext) -> None:
         amount = float((message.text or "").replace(",", ".").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await edit_host(message, state, "📋 Введіть коректне число більше 0:")
+        await edit_host(message, state, "📋 Введи корректное число больше 0:")
         return
 
     await state.update_data(budget_amount=amount)
@@ -132,8 +132,8 @@ async def budget_get_amount(message: Message, state: FSMContext) -> None:
     current_month = datetime.utcnow().strftime("%Y-%m")
     await edit_host(
         message, state,
-        "📅 Для якого місяця встановити бюджет?\n\n"
-        "Введіть у форматі <b>РРРР-ММ</b> або використайте поточний:",
+        "📅 На какой месяц установить бюджет?\n\n"
+        "Введи в формате <b>ГГГГ-ММ</b> или используй текущий:",
         reply_markup=use_current_month_keyboard(current_month),
     )
 
@@ -151,7 +151,7 @@ async def budget_get_month(message: Message, state: FSMContext, db_user: User) -
     try:
         datetime.strptime(text, "%Y-%m")
     except ValueError:
-        await edit_host(message, state, "📅 Невірний формат. Введіть РРРР-ММ (наприклад: 2026-06) або натисніть «Поточний»:")
+        await edit_host(message, state, "📅 Неверный формат. Введи ГГГГ-ММ (например: 2026-06) или нажми «Текущий»:")
         return
     await _save_budget(message, state, db_user, text)
 
@@ -174,7 +174,7 @@ async def _save_budget(target, state: FSMContext, db_user: User, month: str) -> 
             )
         )
         if existing.scalar_one_or_none():
-            msg = f"⚠️ Бюджет «{cat_name}» на {month} вже існує!"
+            msg = f"⚠️ Бюджет «{cat_name}» на {month} уже существует!"
             if isinstance(target, CallbackQuery):
                 await target.answer(msg, show_alert=True)
             else:
@@ -194,5 +194,5 @@ async def _save_budget(target, state: FSMContext, db_user: User, month: str) -> 
 
     await state.clear()
     if isinstance(target, CallbackQuery):
-        await target.answer(f"✅ Бюджет «{cat_name}» на {month} — {amount:.0f} UAH створено!", show_alert=True)
+        await target.answer(f"✅ Бюджет «{cat_name}» на {month} — {amount:.0f} UAH создан!", show_alert=True)
     await _show_budgets(target, db_user, month, host_mid=host_mid)

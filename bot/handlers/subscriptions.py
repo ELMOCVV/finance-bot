@@ -24,9 +24,9 @@ router = Router()
 
 def _sub_period_label(sub: Subscription) -> str:
     if sub.period == "monthly":
-        return f"Щомісячна, {sub.day_of_month}-го числа"
+        return f"Ежемесячная, {sub.day_of_month}-го числа"
     month_name = MONTHS_UA_GEN[sub.month_of_year - 1] if sub.month_of_year else "?"
-    return f"Щорічна, {sub.day_of_month} {month_name}"
+    return f"Ежегодная, {sub.day_of_month} {month_name}"
 
 
 async def _show_subscriptions(target, db_user: User, host_mid: int | None = None) -> None:
@@ -38,7 +38,7 @@ async def _show_subscriptions(target, db_user: User, host_mid: int | None = None
         )
         subs = result.scalars().all()
 
-    text = "🔔 <b>Ваші підписки:</b>" if subs else "🔔 <b>Підписок поки немає.</b>\nДодайте першу:"
+    text = "🔔 <b>Твои подписки:</b>" if subs else "🔔 <b>Подписок пока нет.</b>\nДобавь первую:"
     kb = subscriptions_keyboard(subs)
 
     if isinstance(target, CallbackQuery):
@@ -63,7 +63,7 @@ async def _render_sub_view(callback: CallbackQuery, db_user: User, sub_id: int) 
         sub = result.scalar_one_or_none()
 
     if not sub:
-        await callback.answer("Підписку не знайдено")
+        await callback.answer("Подписка не найдена")
         return
 
     acc_text = "—"
@@ -73,13 +73,13 @@ async def _render_sub_view(callback: CallbackQuery, db_user: User, sub_id: int) 
             if acc:
                 acc_text = f"{acc.name} ({acc.balance:.2f} {acc.currency})"
 
-    status = "✅ Активна" if sub.is_active else "⏸ Призупинена"
+    status = "✅ Активна" if sub.is_active else "⏸ Приостановлена"
     await callback.message.edit_text(
         f"🔔 <b>{sub.name}</b>\n\n"
-        f"💸 Сума: <b>{sub.amount:.2f} {sub.currency}</b>\n"
+        f"💸 Сумма: <b>{sub.amount:.2f} {sub.currency}</b>\n"
         f"📅 Тип: {_sub_period_label(sub)}\n"
-        f"🕐 Нагадування: о {sub.remind_hour:02d}:00\n"
-        f"🏦 Рахунок: {acc_text}\n"
+        f"🕐 Напоминание: в {sub.remind_hour:02d}:00\n"
+        f"🏦 Счёт: {acc_text}\n"
         f"{'✅' if sub.is_active else '⏸'} Статус: {status}",
         reply_markup=subscription_view_keyboard(sub_id, sub.is_active),
     )
@@ -112,12 +112,12 @@ async def toggle_subscription(callback: CallbackQuery, db_user: User) -> None:
         )
         sub = result.scalar_one_or_none()
         if not sub:
-            await callback.answer("Підписку не знайдено")
+            await callback.answer("Подписка не найдена")
             return
         sub.is_active = not sub.is_active
         await db.commit()
-        status = "активовано" if sub.is_active else "призупинено"
-        await callback.answer(f"{'▶️' if sub.is_active else '⏸'} Підписку {status}")
+        status = "активирована" if sub.is_active else "приостановлена"
+        await callback.answer(f"{'▶️' if sub.is_active else '⏸'} Подписка {status}")
     await _render_sub_view(callback, db_user, sub_id)
 
 
@@ -133,7 +133,7 @@ async def sub_del_confirm(callback: CallbackQuery, db_user: User) -> None:
         sub = result.scalar_one_or_none()
     name = sub.name if sub else f"#{sub_id}"
     await callback.message.edit_text(
-        f"⚠️ Видалити підписку «<b>{name}</b>»?\n\nЦе незворотньо.",
+        f"⚠️ Удалить подписку «<b>{name}</b>»?\n\nЭто необратимо.",
         reply_markup=confirm_delete_keyboard(
             confirm_cb=f"sub:delete:{sub_id}",
             cancel_cb=f"sub:view:{sub_id}",
@@ -155,7 +155,7 @@ async def sub_delete(callback: CallbackQuery, db_user: User) -> None:
         if sub:
             await db.delete(sub)
             await db.commit()
-    await callback.answer("✅ Підписку видалено")
+    await callback.answer("✅ Подписка удалена")
     await _show_subscriptions(callback, db_user)
 
 
@@ -172,12 +172,12 @@ async def show_edit_sub(callback: CallbackQuery, db_user: User) -> None:
         )
         sub = result.scalar_one_or_none()
     if not sub:
-        await callback.answer("Підписку не знайдено")
+        await callback.answer("Подписка не найдена")
         return
     await callback.message.edit_text(
-        f"✏️ <b>Редагування: {sub.name}</b>\n\n"
+        f"✏️ <b>Редактирование: {sub.name}</b>\n\n"
         f"💸 {sub.amount:.2f} {sub.currency} | 🕐 {sub.remind_hour:02d}:00\n\n"
-        "Що змінити?",
+        "Что изменить?",
         reply_markup=edit_subscription_keyboard(sub_id),
     )
     await callback.answer()
@@ -194,12 +194,12 @@ async def edit_sub_name_prompt(callback: CallbackQuery, state: FSMContext, db_us
         )
         sub = result.scalar_one_or_none()
     if not sub:
-        await callback.answer("Підписку не знайдено")
+        await callback.answer("Подписка не найдена")
         return
     await state.set_state(EditSubscription.waiting_name)
     await state.update_data(edit_sub_id=sub_id, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        f"📝 Поточна назва: <b>«{sub.name}»</b>\n\nВведіть нову назву:",
+        f"📝 Текущее название: <b>«{sub.name}»</b>\n\nВведи новое название:",
         reply_markup=back_keyboard(f"sub:edit:{sub_id}"),
     )
     await callback.answer()
@@ -209,7 +209,7 @@ async def edit_sub_name_prompt(callback: CallbackQuery, state: FSMContext, db_us
 async def edit_sub_name_input(message: Message, state: FSMContext, db_user: User) -> None:
     new_name = (message.text or "").strip()
     if not new_name or len(new_name) > 256:
-        await edit_host(message, state, "📝 Введіть коректну назву (до 256 символів):")
+        await edit_host(message, state, "📝 Введи корректное название (до 256 символов):")
         return
     data = await state.get_data()
     sub_id = data["edit_sub_id"]
@@ -225,7 +225,7 @@ async def edit_sub_name_input(message: Message, state: FSMContext, db_user: User
             sub.name = new_name
             await db.commit()
     await state.clear()
-    text = f"✅ Назву змінено на «{new_name}»"
+    text = f"✅ Название изменено на «{new_name}»"
     if host_mid:
         try:
             await message.bot.edit_message_text(text, chat_id=message.chat.id, message_id=host_mid, reply_markup=back_keyboard(f"sub:view:{sub_id}"), parse_mode="HTML")
@@ -246,12 +246,12 @@ async def edit_sub_amount_prompt(callback: CallbackQuery, state: FSMContext, db_
         )
         sub = result.scalar_one_or_none()
     if not sub:
-        await callback.answer("Підписку не знайдено")
+        await callback.answer("Подписка не найдена")
         return
     await state.set_state(EditSubscription.waiting_amount)
     await state.update_data(edit_sub_id=sub_id, edit_sub_currency=sub.currency, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        f"💵 Поточна сума: <b>{sub.amount:.2f} {sub.currency}</b>\n\nВведіть нову суму:",
+        f"💵 Текущая сумма: <b>{sub.amount:.2f} {sub.currency}</b>\n\nВведи новую сумму:",
         reply_markup=back_keyboard(f"sub:edit:{sub_id}"),
     )
     await callback.answer()
@@ -263,7 +263,7 @@ async def edit_sub_amount_input(message: Message, state: FSMContext, db_user: Us
         amount = float((message.text or "").replace(",", ".").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await edit_host(message, state, "💵 Введіть коректне число більше 0:")
+        await edit_host(message, state, "💵 Введи корректное число больше 0:")
         return
     data = await state.get_data()
     sub_id = data["edit_sub_id"]
@@ -280,7 +280,7 @@ async def edit_sub_amount_input(message: Message, state: FSMContext, db_user: Us
             sub.amount = amount
             await db.commit()
     await state.clear()
-    text = f"✅ Суму змінено: {amount:.2f} {currency}"
+    text = f"✅ Сумма изменена: {amount:.2f} {currency}"
     if host_mid:
         try:
             await message.bot.edit_message_text(text, chat_id=message.chat.id, message_id=host_mid, reply_markup=back_keyboard(f"sub:view:{sub_id}"), parse_mode="HTML")
@@ -301,13 +301,13 @@ async def edit_sub_hour_prompt(callback: CallbackQuery, state: FSMContext, db_us
         )
         sub = result.scalar_one_or_none()
     if not sub:
-        await callback.answer("Підписку не знайдено")
+        await callback.answer("Подписка не найдена")
         return
     await state.set_state(EditSubscription.waiting_hour)
     await state.update_data(edit_sub_id=sub_id, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        f"🕐 Поточний час нагадування: <b>{sub.remind_hour:02d}:00</b>\n\n"
-        "Введіть годину (0-23):",
+        f"🕐 Текущее время напоминания: <b>{sub.remind_hour:02d}:00</b>\n\n"
+        "Введи час (0-23):",
         reply_markup=back_keyboard(f"sub:edit:{sub_id}"),
     )
     await callback.answer()
@@ -319,7 +319,7 @@ async def edit_sub_hour_input(message: Message, state: FSMContext, db_user: User
         hour = int((message.text or "").strip())
         assert 0 <= hour <= 23
     except (ValueError, AssertionError):
-        await edit_host(message, state, "🕐 Введіть число від 0 до 23:")
+        await edit_host(message, state, "🕐 Введи число от 0 до 23:")
         return
     data = await state.get_data()
     sub_id = data["edit_sub_id"]
@@ -335,7 +335,7 @@ async def edit_sub_hour_input(message: Message, state: FSMContext, db_user: User
             sub.remind_hour = hour
             await db.commit()
     await state.clear()
-    text = f"✅ Нагадування о {hour:02d}:00"
+    text = f"✅ Напоминание в {hour:02d}:00"
     if host_mid:
         try:
             await message.bot.edit_message_text(text, chat_id=message.chat.id, message_id=host_mid, reply_markup=back_keyboard(f"sub:view:{sub_id}"), parse_mode="HTML")
@@ -352,8 +352,8 @@ async def start_add_sub(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(CreateSubscription.waiting_name)
     await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        "🔔 <b>Нова підписка</b>\n\nВведіть назву підписки:\n"
-        "<i>Наприклад: Netflix, Spotify, ChatGPT Plus</i>",
+        "🔔 <b>Новая подписка</b>\n\nВведи название подписки:\n"
+        "<i>Например: Netflix, Spotify, ChatGPT Plus</i>",
         reply_markup=back_keyboard("menu:subscriptions"),
     )
     await callback.answer()
@@ -363,11 +363,11 @@ async def start_add_sub(callback: CallbackQuery, state: FSMContext) -> None:
 async def sub_get_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if not name or len(name) > 256:
-        await edit_host(message, state, "🔔 Введіть коректну назву (до 256 символів):", reply_markup=back_keyboard("menu:subscriptions"))
+        await edit_host(message, state, "🔔 Введи корректное название (до 256 символов):", reply_markup=back_keyboard("menu:subscriptions"))
         return
     await state.update_data(sub_name=name)
     await state.set_state(CreateSubscription.waiting_amount)
-    await edit_host(message, state, f"🔔 <b>{name}</b>\n\nВведіть суму списання:")
+    await edit_host(message, state, f"🔔 <b>{name}</b>\n\nВведи сумму списания:")
 
 
 # ── Крок 2: сума ──────────────────────────────────────────────────────────────
@@ -378,11 +378,11 @@ async def sub_get_amount(message: Message, state: FSMContext) -> None:
         amount = float((message.text or "").replace(",", ".").strip())
         assert amount > 0
     except (ValueError, AssertionError):
-        await edit_host(message, state, "💸 Введіть коректне число більше 0:")
+        await edit_host(message, state, "💸 Введи корректное число больше 0:")
         return
     await state.update_data(sub_amount=amount)
     await state.set_state(CreateSubscription.waiting_currency)
-    await edit_host(message, state, "💱 Виберіть валюту:", reply_markup=sub_currency_keyboard())
+    await edit_host(message, state, "💱 Выбери валюту:", reply_markup=sub_currency_keyboard())
 
 
 # ── Крок 3: валюта ────────────────────────────────────────────────────────────
@@ -393,7 +393,7 @@ async def sub_get_currency(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(sub_currency=currency)
     await state.set_state(CreateSubscription.waiting_period)
     await callback.message.edit_text(
-        "📅 Тип підписки:",
+        "📅 Тип подписки:",
         reply_markup=sub_period_keyboard(),
     )
     await callback.answer()
@@ -407,7 +407,7 @@ async def sub_get_period(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(sub_period=period)
     await state.set_state(CreateSubscription.waiting_day)
     await callback.message.edit_text(
-        "📅 Введіть день місяця списання (1-31):",
+        "📅 Введи день месяца списания (1-31):",
         reply_markup=back_keyboard("menu:subscriptions"),
     )
     await callback.answer()
@@ -421,12 +421,12 @@ async def sub_get_day(message: Message, state: FSMContext, db_user: User) -> Non
         day = int((message.text or "").strip())
         assert 1 <= day <= 31
     except (ValueError, AssertionError):
-        await edit_host(message, state, "📅 Введіть число від 1 до 31:")
+        await edit_host(message, state, "📅 Введи число от 1 до 31:")
         return
     data = await state.update_data(sub_day=day)
     if data.get("sub_period") == "yearly":
         await state.set_state(CreateSubscription.waiting_month)
-        await edit_host(message, state, "📆 Виберіть місяць:", reply_markup=sub_month_keyboard())
+        await edit_host(message, state, "📆 Выбери месяц:", reply_markup=sub_month_keyboard())
     else:
         await state.set_state(CreateSubscription.waiting_account)
         await _show_account_selection(message, db_user)
@@ -449,7 +449,7 @@ async def _show_account_selection(target, db_user: User) -> None:
     async with AsyncSessionLocal() as db:
         res = await db.execute(select(Account).where(Account.user_id == db_user.id))
         accounts = res.scalars().all()
-    text = "🏦 Прив'язати до рахунку (або пропустити):"
+    text = "🏦 Привязать к счёту (или пропустить):"
     kb = sub_account_keyboard(accounts)
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=kb)
@@ -475,7 +475,7 @@ async def sub_select_account(callback: CallbackQuery, state: FSMContext) -> None
 
 
 async def _ask_remind_hour(target) -> None:
-    text = "🕐 О котрій годині надсилати нагадування? (введіть 0-23)\n<i>Наприклад: 9 — о 09:00</i>"
+    text = "🕐 Во сколько присылать напоминание? (введи 0-23)\n<i>Например: 9 — в 09:00</i>"
     if isinstance(target, CallbackQuery):
         await target.message.edit_text(text, reply_markup=back_keyboard("menu:subscriptions"))
     else:
@@ -490,7 +490,7 @@ async def sub_get_hour(message: Message, state: FSMContext, db_user: User) -> No
         hour = int((message.text or "").strip())
         assert 0 <= hour <= 23
     except (ValueError, AssertionError):
-        await edit_host(message, state, "🕐 Введіть число від 0 до 23:")
+        await edit_host(message, state, "🕐 Введи число от 0 до 23:")
         return
 
     data = await state.get_data()

@@ -132,10 +132,10 @@ def test_full_reset_flow_keeps_setup_and_sets_start_balances(client, state):
 
     client.portal.call(rh.reset_start, FakeCallback(bot, "reset:start", host), db_user, state)
     warn = host.edits[-1]["text"]
-    assert "2 транзакцій" in warn and "1 переказів" in warn and "Monobank, Долари" in warn and "СКИНУТИ" in warn
+    assert "2 транзакций" in warn and "1 переводов" in warn and "Monobank, Долари" in warn and "СБРОСИТЬ" in warn
     assert q(client, lambda db: _count(db, Transaction, uid)) == 2           # ще нічого не видалено
 
-    client.portal.call(rh.reset_confirm, FakeMessage(bot, text="скинути"), db_user, state)
+    client.portal.call(rh.reset_confirm, FakeMessage(bot, text="сбросить"), db_user, state)
     for model in (Transaction, Transfer, WalletPending):
         assert q(client, lambda db: _count(db, model, uid)) == 0
     assert q(client, lambda db: _count(db, Transaction)) == 1                # чужі дані не чіпаємо
@@ -151,7 +151,7 @@ def test_full_reset_flow_keeps_setup_and_sets_start_balances(client, state):
     assert q(client, _user).history_reset_at is not None
 
     ask = bot.edited[-1]
-    assert ask["message_id"] == 77 and "Monobank" in ask["text"] and "ще 1" in ask["text"]
+    assert ask["message_id"] == 77 and "Monobank" in ask["text"] and "ещё 1" in ask["text"]
     assert buttons(ask["markup"]) == [("0", "reset:zero")]
 
     client.portal.call(rh.reset_balance, FakeMessage(bot, text="abc"), state)  # не число — питаємо ще
@@ -178,13 +178,13 @@ def test_wrong_word_or_cancel_changes_nothing(client, state):
     host = FakeMessage(bot, message_id=77)
     client.portal.call(rh.reset_start, FakeCallback(bot, "reset:start", host), db_user, state)
     client.portal.call(rh.reset_confirm, FakeMessage(bot, text="так"), db_user, state)
-    assert "Не підтверджено" in bot.edited[-1]["text"]
+    assert "Не подтверждено" in bot.edited[-1]["text"]
     assert q(client, lambda db: _count(db, Transaction, uid)) == 2
     assert client.portal.call(state.get_state) is None
 
     client.portal.call(rh.reset_start, FakeCallback(bot, "reset:start", host), db_user, state)
     client.portal.call(rh.reset_cancel, FakeCallback(bot, "reset:cancel", host), state)
-    assert "Скасовано" in host.edits[-1]["text"]
+    assert "Отменено" in host.edits[-1]["text"]
     assert q(client, lambda db: _count(db, Transaction, uid)) == 2
     assert q(client, _user).history_reset_at is None
 

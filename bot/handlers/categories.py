@@ -17,7 +17,7 @@ from bot.utils.fsm_edit import edit_host, get_host_mid, HOST_MID_KEY
 
 router = Router()
 
-_TYPE_LABELS = {"expense": "💸 витрата", "income": "💰 дохід"}
+_TYPE_LABELS = {"expense": "💸 расход", "income": "💰 доход"}
 
 
 async def _show_categories(target, db_user: User, host_mid: int | None = None) -> None:
@@ -28,12 +28,12 @@ async def _show_categories(target, db_user: User, host_mid: int | None = None) -
         categories = result.scalars().all()
 
     if categories:
-        lines = ["🏷 <b>Ваші категорії:</b>\n"]
+        lines = ["🏷 <b>Твои категории:</b>\n"]
         for cat in categories:
             lines.append(f"{cat.icon or '🏷'} <b>{cat.name}</b> — {_TYPE_LABELS.get(cat.type, cat.type)}")
         text = "\n".join(lines)
     else:
-        text = "🏷 <b>Категорій поки немає.</b>\nДодайте першу:"
+        text = "🏷 <b>Категорий пока нет.</b>\nДобавь первую:"
 
     kb = categories_manage_keyboard(categories)
 
@@ -64,7 +64,7 @@ async def view_category(callback: CallbackQuery, db_user: User) -> None:
         cat = result.scalar_one_or_none()
 
     if not cat:
-        await callback.answer("Категорію не знайдено")
+        await callback.answer("Категория не найдена")
         return
 
     await callback.message.edit_text(
@@ -82,8 +82,8 @@ async def start_add_category(callback: CallbackQuery, state: FSMContext) -> None
     await state.set_state(AddCategory.waiting_name)
     await state.update_data(**{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        "🏷 <b>Нова категорія</b>\n\nВведіть назву категорії:\n"
-        "<i>Наприклад: Подарунки, Інвестиції</i>",
+        "🏷 <b>Новая категория</b>\n\nВведи название категории:\n"
+        "<i>Например: Подарки, Инвестиции</i>",
         reply_markup=back_keyboard("menu:categories"),
     )
     await callback.answer()
@@ -93,11 +93,11 @@ async def start_add_category(callback: CallbackQuery, state: FSMContext) -> None
 async def category_get_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
     if not name or len(name) > 128:
-        await edit_host(message, state, "🏷 Введіть коректну назву (до 128 символів):", reply_markup=back_keyboard("menu:categories"))
+        await edit_host(message, state, "🏷 Введи корректное название (до 128 символов):", reply_markup=back_keyboard("menu:categories"))
         return
     await state.update_data(cat_name=name)
     await state.set_state(AddCategory.waiting_type)
-    await edit_host(message, state, f"🏷 Категорія: <b>{name}</b>\n\nОберіть тип:", reply_markup=category_type_keyboard())
+    await edit_host(message, state, f"🏷 Категория: <b>{name}</b>\n\nВыбери тип:", reply_markup=category_type_keyboard())
 
 
 @router.callback_query(AddCategory.waiting_type, F.data.startswith("cattype:"))
@@ -111,7 +111,7 @@ async def category_get_type(callback: CallbackQuery, state: FSMContext, db_user:
         await db.commit()
 
     await state.clear()
-    await callback.answer(f"✅ Категорію «{name}» додано!", show_alert=True)
+    await callback.answer(f"✅ Категория «{name}» добавлена!", show_alert=True)
     await _show_categories(callback, db_user)
 
 
@@ -125,13 +125,13 @@ async def category_rename_prompt(callback: CallbackQuery, state: FSMContext, db_
         cat = result.scalar_one_or_none()
 
     if not cat:
-        await callback.answer("Категорію не знайдено")
+        await callback.answer("Категория не найдена")
         return
 
     await state.set_state(EditCategory.waiting_name)
     await state.update_data(edit_cat_id=cat_id, **{HOST_MID_KEY: callback.message.message_id})
     await callback.message.edit_text(
-        f"📝 Поточна назва: «<b>{cat.name}</b>»\n\nВведіть нову назву:",
+        f"📝 Текущее название: «<b>{cat.name}</b>»\n\nВведи новое название:",
         reply_markup=back_keyboard(f"cat:view:{cat_id}"),
     )
     await callback.answer()
@@ -141,7 +141,7 @@ async def category_rename_prompt(callback: CallbackQuery, state: FSMContext, db_
 async def category_rename_input(message: Message, state: FSMContext, db_user: User) -> None:
     new_name = (message.text or "").strip()
     if not new_name or len(new_name) > 128:
-        await edit_host(message, state, "📝 Введіть коректну назву (до 128 символів):")
+        await edit_host(message, state, "📝 Введи корректное название (до 128 символов):")
         return
 
     data = await state.get_data()
@@ -167,7 +167,7 @@ async def category_rename_input(message: Message, state: FSMContext, db_user: Us
             return
         except Exception:
             pass
-    await message.answer(f"✅ Назву змінено на «{new_name}»", reply_markup=back_keyboard(f"cat:view:{cat_id}"))
+    await message.answer(f"✅ Название изменено на «{new_name}»", reply_markup=back_keyboard(f"cat:view:{cat_id}"))
 
 
 # ── Видалення ─────────────────────────────────────────────────────────────────
@@ -180,8 +180,8 @@ async def category_del_confirm(callback: CallbackQuery, db_user: User) -> None:
         cat = result.scalar_one_or_none()
     name = cat.name if cat else f"#{cat_id}"
     await callback.message.edit_text(
-        f"⚠️ Видалити категорію «<b>{name}</b>»?\n\n"
-        "Транзакції залишаться без категорії, а пов'язані бюджети будуть видалені.",
+        f"⚠️ Удалить категорию «<b>{name}</b>»?\n\n"
+        "Транзакции останутся без категории, а связанные бюджеты будут удалены.",
         reply_markup=confirm_delete_keyboard(
             confirm_cb=f"cat:delete:{cat_id}",
             cancel_cb=f"cat:view:{cat_id}",
@@ -199,5 +199,5 @@ async def category_delete(callback: CallbackQuery, db_user: User) -> None:
         if cat:
             await db.delete(cat)
             await db.commit()
-    await callback.answer("✅ Категорію видалено")
+    await callback.answer("✅ Категория удалена")
     await _show_categories(callback, db_user)

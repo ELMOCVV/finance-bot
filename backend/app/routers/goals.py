@@ -42,7 +42,7 @@ async def get_goal(
     )
     goal = result.scalar_one_or_none()
     if not goal:
-        raise HTTPException(status_code=404, detail="Ціль не знайдено")
+        raise HTTPException(status_code=404, detail="Цель не найдена")
     return goal
 
 
@@ -58,7 +58,7 @@ async def update_goal(
     )
     goal = result.scalar_one_or_none()
     if not goal:
-        raise HTTPException(status_code=404, detail="Ціль не знайдено")
+        raise HTTPException(status_code=404, detail="Цель не найдена")
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(goal, field, value)
     await db.flush()
@@ -77,5 +77,5 @@ async def delete_goal(
     )
     goal = result.scalar_one_or_none()
     if not goal:
-        raise HTTPException(status_code=404, detail="Ціль не знайдено")
+        raise HTTPException(status_code=404, detail="Цель не найдена")
     await db.delete(goal)

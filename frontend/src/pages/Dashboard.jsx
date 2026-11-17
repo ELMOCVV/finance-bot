@@ -83,13 +83,13 @@ export default function Dashboard({ userId }) {
 
   // Pie chart
   const pieTotal = cats.reduce((s, c) => s + (c.total_uah || 0), 0)
-  const pieData = cats.map((c) => ({ name: c.name || 'Інше', value: Math.round(c.total_uah || 0) }))
+  const pieData = cats.map((c) => ({ name: c.name || 'Другое', value: Math.round(c.total_uah || 0) }))
 
   return (
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">Фінанси</div>
+          <div className="page-title">Финансы</div>
           <div className="page-sub">{month.replace('-', ' / ')}</div>
         </div>
       </div>
@@ -98,14 +98,14 @@ export default function Dashboard({ userId }) {
         {/* Balance hero */}
         <div className="section">
           <div className="card-hero">
-            <div className="balance-label">Загальний баланс</div>
+            <div className="balance-label">Общий баланс</div>
             {loading ? (
               <Skeleton h={40} w="70%" style={{ marginBottom: 8 }} />
             ) : (
               <>
                 <div className="balance-amount">~{fmtUAH(totalUAH)}</div>
                 <div className={`balance-change ${(summary.net_uah || 0) >= 0 ? 'pos' : 'neg'}`}>
-                  {(summary.net_uah || 0) >= 0 ? '+' : ''}{fmtUAH(summary.net_uah || 0)} цього місяця
+                  {(summary.net_uah || 0) >= 0 ? '+' : ''}{fmtUAH(summary.net_uah || 0)} в этом месяце
                 </div>
               </>
             )}
@@ -116,14 +116,14 @@ export default function Dashboard({ userId }) {
         <div className="section">
           <div className="stats-grid">
             <div className="stat-card">
-              <div className="stat-label">Доходи</div>
+              <div className="stat-label">Доходы</div>
               {loading
                 ? <Skeleton h={24} w="60%" />
                 : <div className="stat-value income">{fmtUAH(summary.total_income_uah || 0)}</div>
               }
             </div>
             <div className="stat-card">
-              <div className="stat-label">Витрати</div>
+              <div className="stat-label">Расходы</div>
               {loading
                 ? <Skeleton h={24} w="60%" />
                 : <div className="stat-value expense">{fmtUAH(summary.total_expense_uah || 0)}</div>
@@ -134,7 +134,7 @@ export default function Dashboard({ userId }) {
 
         {/* Account cards */}
         <div className="section">
-          <div className="section-label">Рахунки</div>
+          <div className="section-label">Счета</div>
           {loading ? (
             <div style={{ display: 'flex', gap: 10 }}>
               <Skeleton h={100} w={150} />
@@ -143,7 +143,7 @@ export default function Dashboard({ userId }) {
           ) : accounts.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px 0' }}>
               <div className="empty-icon">🏦</div>
-              <div className="empty-text">Рахунків ще немає</div>
+              <div className="empty-text">Счетов ещё нет</div>
             </div>
           ) : (
             <div className="accounts-scroll">
@@ -167,7 +167,7 @@ export default function Dashboard({ userId }) {
         {/* 30-day expense chart */}
         <div className="section">
           <div className="chart-wrap">
-            <div className="chart-title">Витрати за 30 днів</div>
+            <div className="chart-title">Расходы за 30 дней</div>
             {chartQuery[0].isLoading ? (
               <Skeleton h={140} />
             ) : (
@@ -206,7 +206,7 @@ export default function Dashboard({ userId }) {
         {cats.length > 0 && (
           <div className="section">
             <div className="chart-wrap">
-              <div className="chart-title">Топ категорій витрат</div>
+              <div className="chart-title">Топ категорий расходов</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <PieChart width={120} height={120}>
                   <Pie data={pieData} cx={55} cy={55} innerRadius={34} outerRadius={54} paddingAngle={2} dataKey="value" strokeWidth={0}>
@@ -217,7 +217,7 @@ export default function Dashboard({ userId }) {
                   {cats.map((c, i) => (
                     <div key={c.category_id || i} className="cat-row">
                       <div className="cat-dot" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      <span className="cat-name">{c.icon ? `${c.icon} ` : ''}{c.name || 'Інше'}</span>
+                      <span className="cat-name">{c.icon ? `${c.icon} ` : ''}{c.name || 'Другое'}</span>
                       <span className="cat-val">{fmtUAH(c.total_uah || 0)}</span>
                     </div>
                   ))}
@@ -230,7 +230,7 @@ export default function Dashboard({ userId }) {
         {/* Goals */}
         {goals.length > 0 && (
           <div className="section">
-            <div className="section-label">Цілі</div>
+            <div className="section-label">Цели</div>
             <div className="card">
               {goals.map((g) => {
                 const pct = Math.min(100, Math.round(g.progress_percent || 0))
@@ -256,7 +256,7 @@ export default function Dashboard({ userId }) {
         {/* Debts */}
         {debts.length > 0 && (
           <div className="section">
-            <div className="section-label">Борги</div>
+            <div className="section-label">Долги</div>
             <div className="card">
               {debts.map((d) => {
                 const total = d.total_amount || 1
@@ -267,7 +267,7 @@ export default function Dashboard({ userId }) {
                   <div key={d.id} className="progress-item">
                     <div className="progress-row">
                       <span className="progress-name">💳 {d.name}</span>
-                      <span className="progress-meta">{fmtAmount(remaining, d.currency || 'UAH')} залишилось</span>
+                      <span className="progress-meta">{fmtAmount(remaining, d.currency || 'UAH')} осталось</span>
                     </div>
                     <div className="progress-track">
                       <div

@@ -17,7 +17,7 @@ router = Router()
 @router.callback_query(F.data == "menu:main")
 async def show_main_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text("Головне меню:", reply_markup=main_menu_keyboard())
+    await callback.message.edit_text("Главное меню:", reply_markup=main_menu_keyboard())
     await callback.answer()
 
 
@@ -31,13 +31,13 @@ async def show_analytics(callback: CallbackQuery, db_user: User) -> None:
         cats = await analytics_service.get_expenses_by_category(db, db_user.id, month)
 
     lines = [
-        f"📊 <b>Аналітика за {month}:</b>\n",
-        f"➕ Доходи: <b>{summary['total_income_uah']:.2f} ₴</b>",
-        f"➖ Витрати: <b>{summary['total_expense_uah']:.2f} ₴</b>",
+        f"📊 <b>Аналитика за {month}:</b>\n",
+        f"➕ Доходы: <b>{summary['total_income_uah']:.2f} ₴</b>",
+        f"➖ Расходы: <b>{summary['total_expense_uah']:.2f} ₴</b>",
         f"💰 Результат: <b>{summary['net_uah']:.2f} ₴</b>",
     ]
     if cats:
-        lines.append("\n<b>Топ витрат:</b>")
+        lines.append("\n<b>Топ расходов:</b>")
         for c in cats[:5]:
             lines.append(f"  {c['icon']} {c['name']}: {c['total_uah']:.0f} ₴")
 
@@ -54,14 +54,14 @@ async def show_recent_transactions(callback: CallbackQuery, db_user: User) -> No
 
     if not items:
         await callback.message.edit_text(
-            "💰 <b>Транзакцій ще немає.</b>",
+            "💰 <b>Транзакций ещё нет.</b>",
             reply_markup=back_keyboard(),
         )
         await callback.answer()
         return
 
     await callback.message.edit_text(
-        "💰 <b>Останні транзакції</b> (натисни для деталей):",
+        "💰 <b>Последние транзакции</b> (нажми для деталей):",
         reply_markup=transaction_list_keyboard(items),
     )
     await callback.answer()
@@ -70,8 +70,8 @@ async def show_recent_transactions(callback: CallbackQuery, db_user: User) -> No
 @router.callback_query(F.data == "menu:advisor")
 async def show_advisor_promo(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
-        "💼 Твій персональний фінансовий асистент @MoneyDeckAssistantBot\n"
-        "Він знає твої фінанси і відповість на будь-яке питання!",
+        "💼 Твой персональный финансовый ассистент @MoneyDeckAssistantBot\n"
+        "Он знает твои финансы и ответит на любой вопрос!",
         reply_markup=back_keyboard(),
     )
     await callback.answer()
@@ -83,9 +83,9 @@ async def show_advisor_promo(callback: CallbackQuery) -> None:
 async def menu_add_expense(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AddTransaction.waiting_text)
     await callback.message.edit_text(
-        "💸 <b>Нова витрата</b>\n\n"
-        "Напиши що і скільки витратив:\n\n"
-        "<i>«Кава 50 грн», «Продукти 350 UAH», «Таксі 120»</i>",
+        "💸 <b>Новый расход</b>\n\n"
+        "Напиши, что и сколько потратил:\n\n"
+        "<i>«Кофе 50 грн», «Продукты 350 UAH», «Такси 120»</i>",
         reply_markup=back_keyboard(),
     )
     await callback.answer()
@@ -95,9 +95,9 @@ async def menu_add_expense(callback: CallbackQuery, state: FSMContext) -> None:
 async def menu_add_income(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AddTransaction.waiting_income_text)
     await callback.message.edit_text(
-        "💰 <b>Новий дохід</b>\n\n"
-        "Напиши що і скільки отримав:\n\n"
-        "<i>«Зарплата 15000», «Фріланс 5000 USD», «Аванс 7500»</i>",
+        "💰 <b>Новый доход</b>\n\n"
+        "Напиши, что и сколько получил:\n\n"
+        "<i>«Зарплата 15000», «Фриланс 5000 USD», «Аванс 7500»</i>",
         reply_markup=back_keyboard(),
     )
     await callback.answer()
@@ -113,13 +113,13 @@ async def show_balance(callback: CallbackQuery, db_user: User) -> None:
 
     if not accounts:
         await callback.message.edit_text(
-            "💼 <b>Рахунків ще немає.</b>\n\nДодайте перший рахунок:",
+            "💼 <b>Счетов ещё нет.</b>\n\nДобавь первый счёт:",
             reply_markup=back_keyboard("menu:accounts"),
         )
         await callback.answer()
         return
 
-    lines = ["💼 <b>Ваші рахунки:</b>\n"]
+    lines = ["💼 <b>Твои счета:</b>\n"]
     total_uah = 0.0
     for acc in accounts:
         flag = currency_flag(acc.currency)
@@ -135,7 +135,7 @@ async def show_balance(callback: CallbackQuery, db_user: User) -> None:
             )
         total_uah += uah
 
-    lines.append(f"\n💰 <b>Загалом: ~{total_uah:,.0f} ₴</b>")
+    lines.append(f"\n💰 <b>Всего: ~{total_uah:,.0f} ₴</b>")
     await callback.message.edit_text("\n".join(lines), reply_markup=back_keyboard())
     await callback.answer()
 
@@ -150,7 +150,7 @@ async def show_settings_menu(callback: CallbackQuery, state: FSMContext) -> None
 @router.callback_query(F.data == "menu:add_photo")
 async def menu_add_photo(callback: CallbackQuery) -> None:
     await callback.message.edit_text(
-        "📷 Надішли фото чека і я його розпізнаю:",
+        "📷 Пришли фото чека, и я его распознаю:",
         reply_markup=back_keyboard(),
     )
     await callback.answer()
@@ -159,5 +159,5 @@ async def menu_add_photo(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "cancel:flow")
 async def cancel_flow(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text("❌ Скасовано.", reply_markup=back_keyboard())
+    await callback.message.edit_text("❌ Отменено.", reply_markup=back_keyboard())
     await callback.answer()
